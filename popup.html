@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Browser Agent</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    h1 {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 15px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    button {
+      padding: 8px 12px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    .color-picker {
+      margin: 10px 0;
+    }
+    #status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      display: none;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>Browser Agent</h1>
+  <div class="container">
+    <div>
+      <label for="bgColor">背景色を選択:</label>
+      <input type="color" id="bgColor" class="color-picker" value="#ffffff">
+    </div>
+    <button id="changeColor">背景色を変更</button>
+    <button id="captureTab">現在のタブをキャプチャ</button>
+    <button id="resetPage">ページをリセット</button>
+    <div id="status"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

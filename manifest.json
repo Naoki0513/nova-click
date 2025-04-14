@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Browser Agent",
+  "version": "1.0.0",
+  "description": "シンプルなブラウザエージェント拡張機能",
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.txt",
+      "48": "images/icon48.txt",
+      "128": "images/icon128.txt"
+    }
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}

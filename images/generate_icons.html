@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>アイコン生成</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+    .icon-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    button {
+      margin: 10px;
+      padding: 8px 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Browser Agent アイコン生成</h1>
+  
+  <div class="icon-container">
+    <h2>16x16 アイコン</h2>
+    <canvas id="icon16" width="16" height="16"></canvas>
+    <button onclick="downloadIcon(16)">ダウンロード</button>
+  </div>
+  
+  <div class="icon-container">
+    <h2>48x48 アイコン</h2>
+    <canvas id="icon48" width="48" height="48"></canvas>
+    <button onclick="downloadIcon(48)">ダウンロード</button>
+  </div>
+  
+  <div class="icon-container">
+    <h2>128x128 アイコン</h2>
+    <canvas id="icon128" width="128" height="128"></canvas>
+    <button onclick="downloadIcon(128)">ダウンロード</button>
+  </div>
+  
+  <script>
+    // アイコンを描画する関数
+    function drawIcon(size) {
+      const canvas = document.getElementById(`icon${size}`);
+      const ctx = canvas.getContext('2d');
+      
+      // 背景を塗りつぶす
+      ctx.fillStyle = '#4285f4'; // Googleブルー
+      ctx.fillRect(0, 0, size, size);
+      
+      // 円を描画
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size/3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // 「B」の文字を描画
+      ctx.fillStyle = '#4285f4';
+      ctx.font = `bold ${size/2}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('B', size/2, size/2);
+    }
+    
+    // アイコンをダウンロードする関数
+    function downloadIcon(size) {
+      const canvas = document.getElementById(`icon${size}`);
+      const link = document.createElement('a');
+      link.download = `icon${size}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+    
+    // ページ読み込み時にアイコンを描画
+    window.onload = function() {
+      drawIcon(16);
+      drawIcon(48);
+      drawIcon(128);
+    };
+  </script>
+</body>
+</html>
