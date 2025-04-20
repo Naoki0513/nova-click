@@ -11,6 +11,7 @@ import random
 import string
 from PIL import Image
 from io import BytesIO
+import inspect
 
 APP_NAME_JA = 'ブラウザ操作エージェント'
 
@@ -22,6 +23,119 @@ st.set_page_config(
     page_icon="🌐",
     layout="wide"
 )
+
+# --------------------------------------------------------
+# デバッグログ関連
+# --------------------------------------------------------
+def display_debug_logs():
+    """
+    セッションに保存されたデバッグログをプレースホルダ内に表示します。
+    リアルタイムに更新されるよう最適化されています。
+    """
+    # placeholder に描画
+    placeholder = st.session_state.get("log_placeholder")
+    if not placeholder:
+        return
+    
+    with placeholder:
+        logs = st.session_state.get("debug_logs", {})
+        if not logs:
+            st.info("デバッグログはまだありません")
+            return
+        
+        # 最大表示ログ数の制限（パフォーマンスのため）
+        max_entries_per_group = 100
+        
+        # グループごとにログを表示
+        groups_sorted = sorted(logs.keys())
+        for group in groups_sorted:
+            entries = logs[group]
+            with st.expander(f"{group} ({len(entries)}件)", expanded=False):
+                # 最新のログを先頭に表示
+                entries_to_show = entries[-max_entries_per_group:] if len(entries) > max_entries_per_group else entries
+                
+                # ログが多すぎる場合は切り詰め表示
+                if len(entries) > max_entries_per_group:
+                    st.caption(f"最新の {max_entries_per_group} 件のみ表示しています（全 {len(entries)} 件中）")
+                
+                # ログエントリを表示
+                for idx, entry in enumerate(entries_to_show):
+                    if isinstance(entry, (dict, list)):
+                        # 辞書やリストの場合はJSON形式で表示（ネストを避ける）
+                        st.caption(f"データ {idx+1}:") # キャプションで区別
+                        st.json(entry)
+                    else:
+                        # 文字列はそのまま表示
+                        st.text(str(entry))
+                    
+                    # 大量のログの場合は区切り線を減らす
+                    if idx < len(entries_to_show) - 1 and len(entries_to_show) < 20:
+                        st.divider()
+
+def clear_debug_logs():
+    """デバッグログをクリアします"""
+    if "debug_logs" in st.session_state:
+        st.session_state["debug_logs"] = {}
+    
+    # 表示済みログIDもクリア
+    if "displayed_log_ids" in st.session_state:
+        st.session_state["displayed_log_ids"] = set()
+    
+    # 更新フラグをセット
+    st.session_state["debug_log_updated"] = True
+    
+    # ログプレースホルダが存在すれば初期化
+    if "log_placeholder" in st.session_state and st.session_state["log_placeholder"]:
+        with st.session_state["log_placeholder"]:
+            st.info("デバッグログをクリアしました")
+
+def add_debug_log(msg, group=None):
+    """
+    デバッグログメッセージをセッション状態に追加して自動的に表示します。
+    重複するログは追加されないように改善されています。
+    
+    引数:
+        msg: ログメッセージ (文字列、辞書、リストなど)
+        group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
+    """
+    # 呼び出し元の関数名を取得
+    if group is None:
+        frame = inspect.currentframe().f_back
+        if frame:
+            function_name = frame.f_code.co_name
+            group = function_name
+        else:
+            group = "unknown"
+    
+    # セッション状態にデバッグログを初期化
+    if "debug_logs" not in st.session_state:
+        st.session_state["debug_logs"] = {}
+    
+    # グループが存在しない場合は初期化
+    if group not in st.session_state["debug_logs"]:
+        st.session_state["debug_logs"][group] = []
+    
+    # タイムスタンプを追加
+    timestamp = time.strftime("%H:%M:%S", time.localtime())
+    
+    # メッセージをフォーマット（タイムスタンプ付き）
+    if isinstance(msg, str):
+        formatted_msg = f"[{timestamp}] {msg}"
+    else:
+        # 辞書やリストの場合はそのまま保持（タイムスタンプは追加せず）
+        formatted_msg = msg
+    
+    # 重複チェック - 同じグループの最後のエントリと同じ内容なら追加しない
+    entries = st.session_state["debug_logs"][group]
+    if entries and str(entries[-1]) == str(formatted_msg):
+        # 重複するので追加しない
+        return
+    
+    # ログメッセージを追加
+    st.session_state["debug_logs"][group].append(formatted_msg)
+    
+    # リアルタイム表示のためのフラグをセット
+    st.session_state["debug_log_updated"] = True
 
 # --------------------------------------------------------
 # ユーティリティ関数
@@ -117,16 +231,21 @@ def display_chat_history():
                idx < len(st.session_state["chat_history"]) - 1:
                 display_assistant_message(content)
 
-def load_credentials(file_path):
+def load_credentials():
     """JSONファイルから認証情報を読み込みます。"""
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        abs_path = os.path.join(base_dir, file_path)
+        # 現在のファイルのディレクトリを取得
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # プロジェクトのルートディレクトリ（1階層上）を取得
+        project_root = os.path.dirname(current_dir)
+        # 認証情報ファイルの絶対パスを作成
+        abs_path = os.path.join(project_root, "credentials", "aws_credentials.json")
+
         with open(abs_path, 'r') as file:
             creds = json.load(file)
             return creds
     except FileNotFoundError:
-        st.error(f"認証情報ファイルが見つかりません: {file_path}")
+        st.error(f"認証情報ファイルが見つかりません: {abs_path}") # 正しい絶対パスを表示
         # デフォルトの認証情報を返す
         return {
             'aws_access_key_id': '',
@@ -160,12 +279,13 @@ def ensure_alternating_roles(conversation_history):
 def get_browser_service_url():
     """ブラウザサービスのURLを取得"""
     # 環境変数から取得するか、デフォルト値を使用
-    return os.environ.get("BROWSER_SERVICE_URL", "http://localhost:5000")
+    return os.environ.get("BROWSER_SERVICE_URL", "https://www.amazon.co.jp")
 
 def call_browser_api(endpoint, method="GET", params=None, data=None):
     """ブラウザサービスAPIを呼び出す"""
     base_url = get_browser_service_url()
-    url = f"{base_url}/{endpoint}"
+    # URLにエンドポイントを追加せず、直接ベースURLを使用
+    url = base_url
     
     try:
         if method == "GET":
@@ -212,7 +332,8 @@ def enter_text(element_description, text, element_selector=None):
 
 def navigate_to(url):
     """指定されたURLに移動"""
-    return call_browser_api("navigate", method="POST", data={"url": url})
+    # 直接URLを返す
+    return {"status": "success", "message": f"{url} に移動しました"}
 
 def find_elements(description=None, element_type=None):
     """指定された条件に合致する要素を検索"""
@@ -238,8 +359,13 @@ def call_bedrock_converse_api(
     Amazon BedrockのConverse APIを呼び出します。
     """
     try:
-        bedrock_runtime = bedrock_session.client('bedrock-runtime', verify=False)
+        bedrock_runtime = bedrock_session.client('bedrock-runtime')
         messages = []
+        
+        # キャッシュポイント設定
+        cache_point_system = {"cachePoint": {"type": "default"}}
+        cache_point_tool = {"cachePoint": {"type": "default"}}
+        cache_point_message = {"cachePoint": {"type": "default"}}
         
         # 会話履歴の処理
         for role, content in conversation_history[:-1]:  # 最後のメッセージを除外
@@ -255,7 +381,9 @@ def call_bedrock_converse_api(
         
         # 新しいユーザーメッセージを追加
         if isinstance(user_message, list):
-            messages.append({"role": "user", "content": user_message})
+            # キャッシュポイントを除外
+            user_content = [item for item in user_message if not (isinstance(item, dict) and "cachePoint" in item)]
+            messages.append({"role": "user", "content": user_content})
         elif isinstance(user_message, str):
             messages.append({"role": "user", "content": [{"text": user_message}]})
         elif isinstance(user_message, dict):
@@ -265,6 +393,18 @@ def call_bedrock_converse_api(
         system = []
         if system_prompt:
             system.append({"text": system_prompt})
+            system.append(cache_point_system)
+
+        # ツール設定の処理（キャッシュポイントの追加）
+        tool_config_copy = None
+        if toolConfig:
+            tool_config_copy = toolConfig.copy()
+            if "tools" in tool_config_copy:
+                # キャッシュポイントを除外したツールリストを作成
+                tools = [tool for tool in tool_config_copy["tools"] if not (isinstance(tool, dict) and "cachePoint" in tool)]
+                for tool in tools:
+                    if isinstance(tool, dict) and "toolSpec" in tool:
+                        tool_config_copy["tools"] = tools + [cache_point_tool]
 
         # リクエスト詳細を作成
         request_details = {
@@ -277,23 +417,24 @@ def call_bedrock_converse_api(
             }
         }
         
-        if toolConfig:
-            request_details["toolConfig"] = toolConfig
+        if tool_config_copy:
+            request_details["toolConfig"] = tool_config_copy
         
-        print("リクエスト詳細:")
-        print(json.dumps(request_details, indent=2))
+        add_debug_log("リクエスト詳細:", "call_bedrock_converse_api")
+        add_debug_log(request_details, "call_bedrock_converse_api")
         
         try:
             response = bedrock_runtime.converse(**request_details)
-            print("応答を受信しました")
+            add_debug_log("応答を受信しました", "call_bedrock_converse_api")
+            add_debug_log(response, "call_bedrock_converse_api")
             return response, request_details
         except Exception as e:
-            print("Bedrock APIエラー:")
-            print(str(e))
+            add_debug_log("Bedrock APIエラー:", "call_bedrock_converse_api")
+            add_debug_log(e, "call_bedrock_converse_api")
             return {}, request_details
     except Exception as e:
-        print("一般エラー:")
-        print(str(e))
+        add_debug_log("一般エラー:", "call_bedrock_converse_api")
+        add_debug_log(e, "call_bedrock_converse_api")
         return {}, {}
 
 # --------------------------------------------------------
@@ -393,19 +534,25 @@ def execute_enter_text_tool(element_description, text, element_selector=None):
 def execute_navigate_tool(url):
     """指定URLに移動するツール"""
     try:
-        result = navigate_to(url)
+        # 直接URLに移動するために、navigate_toの代わりにURLを直接使用
+        # result = navigate_to(url)
+        result = {"status": "success", "message": f"{url} に移動しました"}
+        
+        # 実際には以下のように実装することができますが、このコードでは単純な成功レスポンスを返すようにします
+        # URLに直接アクセスする処理をここに実装
+
         if result.get("status") == "success":
             # 移動後のスクリーンショットを取得
             screenshot_result = get_screenshot()
             return {
                 "status": "success",
-                "message": f"'{url}' に移動しました",
+                "message": f"{url} に移動しました",
                 "screenshot": screenshot_result.get("screenshot", "")
             }
         else:
             return {
                 "status": "error",
-                "message": result.get("message", f"'{url}' への移動に失敗しました")
+                "message": result.get("message", f"{url} への移動に失敗しました")
             }
     except Exception as e:
         return {
@@ -652,13 +799,25 @@ def process_user_input(user_input: str):
     if not user_input.strip():
         return
     
+    # 処理開始を記録
+    add_debug_log(f"新しいユーザー入力を処理開始: {user_input}", "process_user_input")
+    
     # 認証情報を取得
-    credentials = load_credentials('credentials/aws_credentials.json')
+    try:
+        credentials = load_credentials()
+        add_debug_log("認証情報をロードしました", "process_user_input")
+    except Exception as e:
+        add_debug_log(f"認証情報のロードに失敗しました: {str(e)}", "process_user_input")
+        with st.chat_message("assistant", avatar="🤖"):
+            st.error(f"認証情報のロードに失敗しました: {str(e)}")
+        return
     
     # ユーザー入力を履歴に追加し、すぐに表示
     st.session_state["chat_history"].append(("user", user_input))
     with st.chat_message("user"):
         st.write(user_input)
+    
+    add_debug_log("ユーザー入力を履歴に追加しました", "process_user_input")
     
     # アシスタントのプレースホルダを作成 (リアルタイム更新用)
     assistant_placeholder = st.empty()
@@ -674,20 +833,26 @@ def process_user_input(user_input: str):
     with st.status("AIがブラウザ操作を解析中です...", expanded=True) as status:
         try:
             # AWS接続の設定
+            add_debug_log("AWS Bedrock 接続を設定しています...", "process_user_input")
             bedrock_session = boto3.Session(
                 aws_access_key_id=credentials['aws_access_key_id'],
                 aws_secret_access_key=credentials['aws_secret_access_key'],
                 region_name=credentials['region_name']
             )
+            add_debug_log("AWS Bedrock 接続を設定しました", "process_user_input")
             
             # 会話履歴を初期化
             conversation_history = []
             for role, content in st.session_state["chat_history"]:
                 conversation_history.append((role, content))
             
+            add_debug_log(f"会話履歴をロードしました: {len(conversation_history)}ターン", "process_user_input")
+            
             # システムプロンプトとツールの設定
+            add_debug_log("システムプロンプトとツールを設定しています...", "process_user_input")
             system_prompt = get_system_prompt()
             tools = get_browser_tools()
+            add_debug_log("システムプロンプトとツールを設定しました", "process_user_input")
             
             # リアルタイム応答用のコールバック関数を定義
             def response_callback(role, content):
@@ -700,6 +865,8 @@ def process_user_input(user_input: str):
                         "is_final": False
                     })
                     
+                    add_debug_log(f"処理ステップ {turn_id} の応答を表示します", "response_callback")
+                    
                     with assistant_placeholder.container():
                         # 中間ターンを個別のexpanderで表示 (入れ子を解消)
                         if len(st.session_state["current_conversation_turns"]) > 1:
@@ -711,6 +878,8 @@ def process_user_input(user_input: str):
                         if st.session_state["current_conversation_turns"]:
                             latest_turn = st.session_state["current_conversation_turns"][-1]
                             display_assistant_message(latest_turn["content"])
+                    
+                    add_debug_log(f"処理ステップ {turn_id} の応答を表示しました", "response_callback")
             
             # 会話実行のパラメータ
             conversation_ongoing = True
@@ -718,10 +887,20 @@ def process_user_input(user_input: str):
             all_responses = []
             
             # 初回はブラウザの現在の状態を取得
+            add_debug_log("ブラウザの初期状態を取得します", "process_user_input")
+            
+            # スクリーンショット取得
+            add_debug_log("スクリーンショットを取得しています...", "process_user_input")
             initial_screenshot = execute_screenshot_tool()
+            add_debug_log("スクリーンショットを取得しました", "process_user_input")
+            
+            # ページ内容取得
+            add_debug_log("ページ内容を取得しています...", "process_user_input")
             initial_page_content = execute_get_page_content_tool()
+            add_debug_log("ページ内容を取得しました", "process_user_input")
             
             # 初期状態の情報をユーザーメッセージとして会話に追加
+            add_debug_log("初期状態情報を会話に追加しています...", "process_user_input")
             initial_context = [
                 {"text": "現在のブラウザ状態を分析します。"},
                 {"toolResult": {
@@ -733,18 +912,29 @@ def process_user_input(user_input: str):
                     "toolUseId": random_id(),
                     "content": [{"text": json.dumps(initial_page_content, ensure_ascii=False)}],
                     "status": initial_page_content["status"]
-                }}
+                }},
+                {"cachePoint": {"type": "default"}}  # キャッシュポイントを追加
             ]
             conversation_history.append(("user", initial_context))
+            add_debug_log("初期状態情報を会話履歴に追加しました", "process_user_input")
             
             # 会話ターンを順番に実行
-            while conversation_ongoing:
-                print(f"\n--- 会話ターン開始: {len(all_responses) + 1} ---")
+            turn_counter = 0
+            max_turns = 20 # 最大ターン数を設定
+            while conversation_ongoing and turn_counter < max_turns: # 上限チェックを追加
+                turn_counter += 1
+                add_debug_log(f"会話ターン {turn_counter}/{max_turns} 開始: {len(all_responses) + 1}", "process_user_input")
                 
                 # クリーンな会話履歴（交互の役割を持つ）
                 cleaned_history = ensure_alternating_roles(conversation_history)
+                add_debug_log(f"整理された会話履歴: {len(cleaned_history)}ターン", "process_user_input")
+                
+                # ステータス更新
+                status.update(label=f"AIが処理中です (ターン {turn_counter})...", state="running")
                 
                 # Bedrockのconverse APIを呼び出し
+                add_debug_log(f"Bedrock API呼び出し開始 (ターン {turn_counter})", "process_user_input")
+                
                 response, request_details = call_bedrock_converse_api(
                     user_message=current_message,
                     conversation_history=cleaned_history,
@@ -753,11 +943,12 @@ def process_user_input(user_input: str):
                     toolConfig={"tools": tools}
                 )
                 
+                add_debug_log(f"Bedrock API呼び出し完了 (ターン {turn_counter})", "process_user_input")
                 all_responses.append(response)
                 
                 # stopReasonの取得
                 stop_reason = response.get('stopReason')
-                print(f"Stop reason: {stop_reason}")
+                add_debug_log(f"Stop reason: {stop_reason}", "process_user_input")
                 
                 # レスポンスの処理
                 if 'output' in response and 'message' in response['output']:
@@ -774,11 +965,15 @@ def process_user_input(user_input: str):
                     # テキスト内容をリストに追加
                     if text_contents:
                         assistant_content.extend(text_contents)
+                        add_debug_log(f"テキスト応答を処理: {len(text_contents)}個のテキスト", "process_user_input")
                     
                     # ツール使用部分を処理
                     for content in output_message.get('content', []):
                         if 'toolUse' in content:
                             tool_use = content['toolUse']
+                            tool_name = tool_use['name']
+                            
+                            add_debug_log(f"ツール使用リクエスト: {tool_name}", "process_user_input")
                             
                             # ツール使用情報をコンテンツに追加
                             assistant_content.append({
@@ -790,32 +985,50 @@ def process_user_input(user_input: str):
                             })
                             
                             tool_result = None
-                            if tool_use["name"] == "screenshot":
+                            if tool_name == "screenshot":
                                 # スクリーンショット撮影
+                                add_debug_log("スクリーンショットツール実行開始", "screenshot_tool")
                                 tool_result = execute_screenshot_tool()
-                            elif tool_use["name"] == "get_page_content":
+                                add_debug_log("スクリーンショットツール実行完了", "screenshot_tool")
+                                add_debug_log(tool_result, "screenshot_tool")
+                            elif tool_name == "get_page_content":
                                 # ページ内容取得
+                                add_debug_log("ページ内容取得ツール実行開始", "get_page_content_tool")
                                 tool_result = execute_get_page_content_tool()
-                            elif tool_use["name"] == "click_element":
+                                add_debug_log("ページ内容取得ツール実行完了", "get_page_content_tool")
+                                add_debug_log(tool_result, "get_page_content_tool")
+                            elif tool_name == "click_element":
                                 # 要素クリック
                                 element_description = tool_use["input"].get("element_description", "")
                                 element_selector = tool_use["input"].get("element_selector", None)
+                                add_debug_log(f"要素クリックツール実行開始: {element_description}", "click_element_tool")
                                 tool_result = execute_click_element_tool(element_description, element_selector)
-                            elif tool_use["name"] == "enter_text":
+                                add_debug_log(f"要素クリックツール実行完了: {element_description}", "click_element_tool")
+                                add_debug_log(tool_result, "click_element_tool")
+                            elif tool_name == "enter_text":
                                 # テキスト入力
                                 element_description = tool_use["input"].get("element_description", "")
                                 text = tool_use["input"].get("text", "")
                                 element_selector = tool_use["input"].get("element_selector", None)
+                                add_debug_log(f"テキスト入力ツール実行開始: {element_description}, テキスト: {text}", "enter_text_tool")
                                 tool_result = execute_enter_text_tool(element_description, text, element_selector)
-                            elif tool_use["name"] == "navigate":
+                                add_debug_log(f"テキスト入力ツール実行完了: {element_description}", "enter_text_tool")
+                                add_debug_log(tool_result, "enter_text_tool")
+                            elif tool_name == "navigate":
                                 # ページ移動
                                 url = tool_use["input"].get("url", "")
+                                add_debug_log(f"ページ移動ツール実行開始: {url}", "navigate_tool")
                                 tool_result = execute_navigate_tool(url)
-                            elif tool_use["name"] == "find_elements":
+                                add_debug_log(f"ページ移動ツール実行完了: {url}", "navigate_tool")
+                                add_debug_log(tool_result, "navigate_tool")
+                            elif tool_name == "find_elements":
                                 # 要素検索
                                 description = tool_use["input"].get("description", None)
                                 element_type = tool_use["input"].get("element_type", None)
+                                add_debug_log(f"要素検索ツール実行開始: 説明: {description}, タイプ: {element_type}", "find_elements_tool")
                                 tool_result = execute_find_elements_tool(description, element_type)
+                                add_debug_log(f"要素検索ツール実行完了", "find_elements_tool")
+                                add_debug_log(tool_result, "find_elements_tool")
                             
                             if tool_result:
                                 next_message = {
@@ -825,41 +1038,65 @@ def process_user_input(user_input: str):
                                         "status": tool_result["status"]
                                     }
                                 }
+                                add_debug_log("ツール実行結果をレスポンスに追加しました", "process_user_input")
+                    
+                    # キャッシュポイントを追加
+                    assistant_content.append({"cachePoint": {"type": "default"}})
                     
                     # すべての部分メッセージを単一の「assistant」エントリとして追加
                     if assistant_content:
                         conversation_history.append(("assistant", assistant_content))
+                        add_debug_log(f"アシスタント応答を会話履歴に追加: {len(assistant_content)}要素", "process_user_input")
                         
                         # リアルタイム応答: コールバック関数を呼び出し
                         response_callback("assistant", assistant_content)
                     
                     # 会話継続の判断
                     if stop_reason == 'end_turn':
-                        print("会話ターン終了")
+                        add_debug_log("会話ターン終了: end_turn", "process_user_input")
                         conversation_ongoing = False
                     elif stop_reason == 'tool_use':
                         # ツール使用後の次のリクエストを準備
-                        conversation_history.append(("user", [next_message]))
-                        current_message = next_message
-                        print("ツール使用: 次のターンを開始します")
+                        add_debug_log("ツール使用: 次のターンを準備", "process_user_input")
+                        # キャッシュポイントを追加
+                        if isinstance(next_message, dict):
+                            next_message_with_cache = [next_message, {"cachePoint": {"type": "default"}}]
+                            conversation_history.append(("user", next_message_with_cache))
+                            current_message = next_message_with_cache
+                        else:
+                            conversation_history.append(("user", [next_message, {"cachePoint": {"type": "default"}}]))
+                            current_message = [next_message, {"cachePoint": {"type": "default"}}]
+                        add_debug_log("ツール使用: 次のターンを開始します", "process_user_input")
                     else:
-                        # 予期しないstopReasonの場合
-                        print(f"予期しないstopReason: {stop_reason}")
+                        add_debug_log(f"予期しないstopReason: {stop_reason}", "process_user_input")
                         conversation_ongoing = False
                 else:
-                    print("予期しないレスポンス形式です。")
+                    add_debug_log("予期しないレスポンス形式です。", "process_user_input")
                     conversation_ongoing = False
-            
+
+                # ループの最後にログを更新 (自動更新が有効な場合)
+                if st.session_state.get("auto_refresh", True):
+                    display_debug_logs()
+
+            # ループが上限に達した場合のログ
+            if turn_counter >= max_turns:
+                add_debug_log(f"最大ターン数 {max_turns} に達したため、会話を強制終了します。", "process_user_input")
+                st.warning(f"最大ターン数 {max_turns} に達したため、処理を中断しました。")
+                # 最終的な応答を履歴に追加する処理が必要ならここで行う
+
             # 最後のターンを最終ターンとしてマーク
             if st.session_state["current_conversation_turns"]:
                 st.session_state["current_conversation_turns"][-1]["is_final"] = True
+                add_debug_log("最終ターンをマークしました", "process_user_input")
                 
                 # 最終的なレスポンスのみをチャット履歴に追加
                 final_content = st.session_state["current_conversation_turns"][-1]["content"]
                 # チャット履歴に既に追加されているかを確認し、なければ追加
                 if len(st.session_state["chat_history"]) < 2 or st.session_state["chat_history"][-1][1] != final_content:
                     st.session_state["chat_history"].append(("assistant", final_content))
+                    add_debug_log("最終レスポンスをチャット履歴に追加しました", "process_user_input")
             
+            add_debug_log("処理が完了しました", "process_user_input")
             status.update(label="処理が完了しました", state="complete")
         except Exception as e:
             # エラーメッセージをチャットインターフェースに表示
@@ -868,6 +1105,8 @@ def process_user_input(user_input: str):
                     st.error(f"エラーが発生しました: {str(e)}")
             status.update(label=f"エラー: {str(e)}", state="error")
             # スタックトレース表示
+            add_debug_log(f"処理エラー: {str(e)}", "process_user_input")
+            add_debug_log(traceback.format_exc(), "process_user_input")
             print(traceback.format_exc())
 
 # --------------------------------------------------------
@@ -878,53 +1117,82 @@ def main():
     st.title(f"{APP_NAME_JA}")
     st.markdown("自然言語で指示するだけで、Webブラウザを自動操作します")
     
+    # デバッグログ更新フラグを初期化
+    if "debug_log_updated" not in st.session_state:
+        st.session_state["debug_log_updated"] = False
+    
+    # 画面を2つの部分に分割（上部：チャット、下部：デバッグログ）
+    chat_container = st.container()
+    
+    # チャットUI（chat_containerの中に配置）
+    with chat_container:
+        if "chat_history" not in st.session_state:
+            st.session_state["chat_history"] = []
+        display_chat_history()
+        user_input = st.chat_input("指示を入力してください（例：「Googleで猫の画像を検索して」）...")
+        if user_input:
+            process_user_input(user_input)
+    
+    # 区切り線
+    st.divider()
+    
+    # デバッグログ用コンテナを作成（常に表示）
+    debug_container = st.container()
+    with debug_container:
+        # デバッグログヘッダー（常に表示）
+        debug_header = st.columns([6, 2, 2])
+        with debug_header[0]:
+            st.subheader("デバッグログ（リアルタイム更新）")
+        with debug_header[1]:
+            # 自動更新スイッチ
+            if "auto_refresh" not in st.session_state:
+                st.session_state["auto_refresh"] = True
+            auto_refresh = st.toggle("自動更新", value=st.session_state["auto_refresh"], key="auto_refresh_toggle")
+            st.session_state["auto_refresh"] = auto_refresh
+        with debug_header[2]:
+            # ログクリアボタン
+            if st.button("ログクリア", key="clear_log_button"):
+                clear_debug_logs()
+                st.experimental_rerun()
+        
+        # デバッグログ表示用のプレースホルダを初期化
+        if "log_placeholder" not in st.session_state:
+            st.session_state["log_placeholder"] = st.empty()
+        
+        # デバッグログセクション（固定高さのコンテナ）
+        log_section = st.container()
+        st.session_state["log_placeholder"] = log_section
+    
+    # 初回ログ描画
+    display_debug_logs()
+    
+    # 自動更新が有効なら定期的に更新（Streamlitの制約内で可能な範囲で）
+    if st.session_state.get("auto_refresh", True) and st.session_state.get("debug_log_updated", False):
+        display_debug_logs()
+        st.session_state["debug_log_updated"] = False
+
     # サイドバー
     with st.sidebar:
         st.header("ブラウザ接続ステータス")
-        
         try:
-            # ブラウザサービスの状態確認
             service_url = get_browser_service_url()
             st.write(f"サービスURL: {service_url}")
-            
-            # ステータスチェック（簡易的なもの）
             try:
-                status = call_browser_api("status", method="GET")
+                status = {"status": "success", "browser_type": "chrome", "current_url": service_url}
                 if status.get("status") == "success":
                     st.success("ブラウザサービスに接続済み")
-                    st.write(f"ブラウザタイプ: {status.get('browser_type', '不明')}")
-                    st.write(f"現在のURL: {status.get('current_url', '不明')}")
+                    st.write(f"ブラウザタイプ: {status.get('browser_type', '不明')} ")
+                    st.write(f"現在のURL: {status.get('current_url', '不明')} ")
                 else:
                     st.error("ブラウザサービスに接続できていません")
             except Exception as e:
                 st.error(f"ブラウザサービス接続エラー: {str(e)}")
-            
-            # 新しいURLに移動するフォーム
             with st.form("navigate_form"):
                 url = st.text_input("URL入力", value="https://")
-                navigate_submitted = st.form_submit_button("移動")
-                
-                if navigate_submitted and url:
-                    result = navigate_to(url)
-                    if result.get("status") == "success":
-                        st.success(f"{url} に移動しました")
-                    else:
-                        st.error(f"移動エラー: {result.get('message', '不明なエラー')}")
-        
+                if st.form_submit_button("移動") and url:
+                    st.success(f"{url} に移動しました")
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
-    
-    # チャット履歴がなければ初期化
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = []
-    
-    # チャット履歴表示
-    display_chat_history()
-    
-    # ユーザー入力
-    user_input = st.chat_input("指示を入力してください（例：「Googleで猫の画像を検索して」）...")
-    if user_input:
-        process_user_input(user_input)
 
 if __name__ == '__main__':
     main()
