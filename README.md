@@ -1,54 +1,64 @@
 # ブラウザ操作エージェント
 
-このアプリケーションは、AIアシスタントを使用してウェブブラウザを操作するStreamlitベースのアプリケーションです。
+このプロジェクトは、自然言語指示でブラウザを操作するAIエージェントです。Streamlitベースのインターフェースから、Webブラウザを自動的に操作できます。
+
+## 構成
+
+リファクタリング後のプロジェクト構成は以下の通りです：
+
+```
+browser-agent/
+├── agent/                 # エージェントコードディレクトリ
+│   ├── __init__.py        # パッケージ初期化
+│   ├── app.py             # メインアプリケーションコード
+│   ├── api_client.py      # Bedrock API連携
+│   ├── browser_tools.py   # ブラウザ操作ツール
+│   ├── main.py            # エージェントパッケージのエントリーポイント
+│   ├── prompts.py         # プロンプト定義
+│   └── utils.py           # ユーティリティ関数
+├── credentials/           # 認証情報ディレクトリ
+│   └── aws_credentials.json # AWS認証情報 (gitignoreに追加すること)
+├── main.py                # プロジェクトのメインエントリーポイント
+├── requirements.txt       # 依存ライブラリ
+└── README.md              # このファイル
+```
 
 ## 機能
+- Webブラウザの自動操作
+- チャットベースのインターフェース
+- 検索、クリック、フォーム入力などの操作
+- スクリーンショット撮影機能
+- リンク抽出機能
 
-- Amazon Bedrock Claude 3.7 Sonnetを使ったAIアシスタント
-- プレイライトを使用したブラウザの自動操作
-- ブラウザの操作をAIに指示することができます
-- 日本語で操作可能
-
-## セットアップ
-
-1. 必要なパッケージをインストールします:
+## 使用方法
+1. 環境構築
 ```bash
-pip install streamlit boto3 playwright beautifulsoup4
+pip install -r requirements.txt
+playwright install chromium
 ```
 
-2. Playwrightのブラウザをインストールします:
-```bash
-playwright install
-```
-
-3. 認証情報を設定します:
-`credentials/aws_credentials.json` に以下の形式でAWS認証情報を設定します:
+2. credentialsディレクトリにaws_credentials.jsonを配置
 ```json
 {
-  "aws_access_key_id": "YOUR_ACCESS_KEY_HERE",
-  "aws_secret_access_key": "YOUR_SECRET_KEY_HERE"
+  "aws_access_key_id": "あなたのAWSアクセスキー",
+  "aws_secret_access_key": "あなたのAWSシークレットキー"
 }
 ```
 
-## 使い方
-
-1. アプリケーションを起動します:
+3. アプリケーションの起動
 ```bash
-streamlit run agent/browser_agent.py
+streamlit run main.py
 ```
 
-2. テキストエリアにブラウザ操作の指示を入力します
-3. AIアシスタントが指示に従ってブラウザを操作します
+4. ブラウザで指示を入力
+   - 例: 「Amazonで商品を検索して」
+   - 例: 「ニュースサイトを開いて最新記事を教えて」
 
-## 利用可能なツール
-
-- ブラウザの初期化と終了
-- URLへの移動
-- DOM要素の取得
-- 要素のクリック
-- テキスト入力
-- スクリーンショット取得
-- リンクの抽出
+## 技術仕様
+- Streamlit: UIフレームワーク
+- Playwright: ブラウザ自動化
+- Amazon Bedrock: AI応答生成
+- Claude 3 Sonnet: メインモデル
 
 ## 注意事項
 
@@ -187,7 +197,7 @@ add_debug_log("ログメッセージ", "グループ名")  # グループ名は�
 
 [ライセンス情報を記載]
 
-## 最終更新: 2025-04-22 22:23:00
+## 最終更新: 2025-04-22 23:58:33
 
 ### 機能
 - Webブラウザの自動操作
