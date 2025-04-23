@@ -1,7 +1,7 @@
 import streamlit as st
 import boto3
 import base64
-from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history, update_readme
+from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history
 from .api_client import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
 from .browser_tools import dispatch_browser_tool
 from .prompts import get_system_prompt
@@ -25,6 +25,8 @@ def initialize_session_state():
         st.session_state["browser"] = None
     if "page" not in st.session_state:
         st.session_state["page"] = None
+    if "model_id" not in st.session_state:
+        st.session_state["model_id"] = "us.amazon.nova-pro-v1:0"
 
 def setup_page_layout():
     """ページレイアウトの設定"""
@@ -38,8 +40,11 @@ def setup_page_layout():
         # モデル選択
         model_id = st.selectbox(
             "モデルID",
-            ["us.anthropic.claude-3-7-sonnet-20250219-v1:0", "amazon.nova-pro-v1:0"]
+            ["us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.amazon.nova-pro-v1:0"],
+            index=0 if st.session_state["model_id"] == "us.anthropic.claude-3-7-sonnet-20250219-v1:0" else 1
         )
+        # 選択されたモデルIDをセッション状態に保存
+        st.session_state["model_id"] = model_id
         
         # 会話履歴のクリアボタン
         if st.button("会話履歴をクリア"):
@@ -106,7 +111,10 @@ def display_conversation_history(conversation_container):
             
             elif role == "assistant":
                 with st.chat_message("assistant"):
-                    display_assistant_message([c for c in msg.get("content", []) if c.get("type") == "text"])
+                    display_assistant_message([
+                        c for c in msg.get("content", [])
+                        if c.get("type") == "text" or (c.get("type") is None and "text" in c)
+                    ])
 
 def display_screenshot(browser_container):
     """スクリーンショットの表示"""
@@ -120,12 +128,6 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
         return
     
     add_debug_log(f"ユーザー入力: {user_input}", "会話")
-    
-    # ユーザーのメッセージを会話履歴に追加
-    st.session_state["conversation_history"].append({
-        "role": "user",
-        "content": [{"type": "text", "text": user_input}]
-    })
     
     # システムプロンプトの設定（未指定の場合はデフォルト値を使用）
     if not system_prompt:
@@ -141,7 +143,8 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
             st.session_state["conversation_history"],
             bedrock_session,
             system_prompt,
-            toolConfig
+            toolConfig,
+            st.session_state["model_id"]
         )
     
     # レスポンスからアシスタントの応答を取得
@@ -149,84 +152,108 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
         st.error(f"APIエラー: {response['error']}")
         return
     
-    assistant_message = response.get("message", {})
+    # レスポンス構造に合わせて修正
+    output_message = response.get("output", {}).get("message", {})
+    assistant_message = output_message # 履歴に追加するために保持
+
     tool_calls = []
-    
-    # アシスタントのメッセージを会話履歴に追加
-    st.session_state["conversation_history"].append(assistant_message)
-    
-    # ツール呼び出しがあるか確認
-    for content in assistant_message.get("content", []):
+    text_content = []
+
+    # テキスト応答とツール呼び出しを抽出
+    for content in output_message.get("content", []):
         if content.get("type") == "tool_use":
             tool_calls.append(content)
-    
-    # テキスト応答を表示
-    display_assistant_message([c for c in assistant_message.get("content", []) if c.get("type") == "text"])
-    
+        elif content.get("type") == "text" or (content.get("type") is None and "text" in content):
+            text_content.append(content)
+
+    # アシスタントのメッセージを会話履歴に追加（ツール呼び出しがない場合）
+    # ツール呼び出しがある場合は、結果を追加してから履歴に最終的なメッセージを追加する
+    if not tool_calls:
+        st.session_state["conversation_history"].append(assistant_message)
+
+    # テキスト応答があれば表示 (ツール呼び出しがない場合)
+    if text_content and not tool_calls:
+        display_assistant_message(text_content)
+
     # ツール呼び出しがある場合は処理
-    for tool_call in tool_calls:
-        tool_input = tool_call.get("input", {})
-        tool_name = tool_input.get("tool_name")
-        params = tool_input.get("params", {})
-        
-        # ツール実行中のメッセージ
-        with st.status(f"ツール実行中: {tool_name}", expanded=True):
-            st.write(f"ツール: {tool_name}")
-            if params:
-                st.write("パラメータ:")
-                st.json(params)
-                
-            # ツールのディスパッチ
-            tool_result = dispatch_browser_tool(tool_name, params)
-            
-            # ツール結果を表示
-            if tool_result:
-                st.write("実行結果:")
-                st.json(tool_result)
-                
-                # ツール結果を会話履歴に追加
-                tool_result_content = {
-                    "type": "tool_result",
-                    "tool_use_id": tool_call.get("id"),
-                    "result": tool_result
-                }
-                
-                # 会話履歴の最後のメッセージを更新
-                st.session_state["conversation_history"][-1]["content"].append(tool_result_content)
-    
-    # ツール結果を踏まえた続きの回答を取得
     if tool_calls:
+        processed_tool_results = []
+        original_assistant_content = assistant_message.get("content", [])
+
+        for tool_call in tool_calls:
+            tool_input = tool_call.get("input", {})
+            tool_name = tool_input.get("tool_name")
+            params = tool_input.get("params", {})
+
+            # ツール実行中のメッセージ
+            with st.status(f"ツール実行中: {tool_name}", expanded=True):
+                st.write(f"ツール: {tool_name}")
+                if params:
+                    st.write("パラメータ:")
+                    st.json(params)
+
+                # ツールのディスパッチ
+                tool_result = dispatch_browser_tool(tool_name, params)
+
+                # ツール結果を表示
+                if tool_result:
+                    st.write("実行結果:")
+                    st.json(tool_result)
+
+                    # ツール結果を会話履歴に追加する形式に整形
+                    tool_result_content = {
+                        "type": "tool_result",
+                        "tool_use_id": tool_call.get("id"),
+                        "result": tool_result
+                    }
+                    processed_tool_results.append(tool_result_content)
+
+        # 元のアシスタントメッセージ（tool_useを含む）とツール結果を結合して履歴に追加
+        final_assistant_message_for_history = {
+            "role": "assistant",
+            "content": original_assistant_content + processed_tool_results
+        }
+        st.session_state["conversation_history"].append(final_assistant_message_for_history)
+
+
+        # ツール結果を踏まえた続きの回答を取得
         with st.spinner("ツール実行結果を分析中..."):
             follow_up_response, token_usage = call_bedrock_converse_api(
                 "",  # 空のメッセージで続きを要求
                 st.session_state["conversation_history"],
                 bedrock_session,
                 system_prompt,
-                toolConfig
+                toolConfig,
+                st.session_state["model_id"]
             )
-        
+
         if "error" not in follow_up_response:
-            follow_up_message = follow_up_response.get("message", {})
-            
-            # 会話履歴を更新
+            follow_up_message = follow_up_response.get("output", {}).get("message", {})
+
+            # 会話履歴の最後のメッセージ（ツール結果を含むもの）をフォローアップメッセージで置き換える
+            # これにより、次のターンではフォローアップ応答がコンテキストに含まれる
             st.session_state["conversation_history"][-1] = follow_up_message
-            
+
             # 続きの応答を表示
-            display_assistant_message([c for c in follow_up_message.get("content", []) if c.get("type") == "text"])
-            
-            # 新しいツール呼び出しがあれば再帰的に処理
+            follow_up_text_content = [
+                c for c in follow_up_message.get("content", [])
+                if c.get("type") == "text" or (c.get("type") is None and "text" in c)
+            ]
+            if follow_up_text_content:
+                display_assistant_message(follow_up_text_content)
+
+            # 新しいツール呼び出しがあれば再帰的に処理（現在は未対応）
             new_tool_calls = [c for c in follow_up_message.get("content", []) if c.get("type") == "tool_use"]
             if new_tool_calls:
-                # 現在はシンプル化のため、再帰処理は略
+                # TODO: 必要であれば再帰処理を実装
                 pass
+        else:
+            st.error(f"フォローアップAPIエラー: {follow_up_response['error']}")
 
 def run_app():
     """アプリケーションを実行します"""
     # セッション状態の初期化
     initialize_session_state()
-    
-    # README.mdを更新
-    update_readme()
     
     # ページレイアウトの設定
     main_container, token_usage_container, conversation_container, user_input_container, browser_container, debug_container = setup_page_layout()
@@ -282,12 +309,11 @@ def run_app():
                     
                     # ユーザー入力を処理
                     with st.chat_message("assistant"):
-                        with st.spinner("回答を生成中..."):
-                            handle_user_input(
-                                user_input,
-                                bedrock_runtime,
-                                get_system_prompt()
-                            )
+                        handle_user_input(
+                            user_input,
+                            bedrock_runtime,
+                            get_system_prompt()
+                        )
                 except Exception as e:
                     st.error(f"エラーが発生しました: {str(e)}")
             else:

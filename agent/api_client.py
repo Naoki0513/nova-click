@@ -9,7 +9,8 @@ def call_bedrock_converse_api(
     conversation_history: List,
     bedrock_session,
     system_prompt: str = None,
-    toolConfig: Dict = None
+    toolConfig: Dict = None,
+    modelId: str = None
 ) -> Tuple[Dict, Dict]:
     """
     Amazon Bedrock Converse APIを呼び出します。
@@ -20,62 +21,82 @@ def call_bedrock_converse_api(
         bedrock_session: Bedrockセッション
         system_prompt: システムプロンプト
         toolConfig: ツール設定
+        modelId: 使用するモデルのID
         
     Returns:
         APIレスポンスとトークン使用量の辞書のタプル
     """
     add_debug_log("Bedrock Converse API呼び出し開始", "API")
     
-    # リクエストボディの構築
-    request = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 8192,
+    # リクエストパラメータの構築
+    request_params = {
+        "modelId": modelId,
     }
+    
+    # メッセージの設定をAPI仕様に合わせて整形
+    messages = []
+    for msg in conversation_history:
+        content_list = []
+        for c in msg.get("content", []):
+            # テキストメッセージの整形
+            if c.get("type") == "text":
+                content_list.append({"text": c.get("text", "")})
+            # ツール呼び出しの整形
+            elif c.get("type") == "tool_use":
+                content_list.append({"toolUse": {
+                    "toolUseId": c.get("id"),
+                    "name": c.get("input", {}).get("tool_name"),
+                    "input": c.get("input")
+                }})
+            # ツール結果の整形
+            elif c.get("type") == "tool_result":
+                content_list.append({"toolResult": {
+                    "toolUseId": c.get("tool_use_id"),
+                    "content": [{"json": c.get("result")}],
+                    "status": "success"
+                }})
+        if content_list:
+            messages.append({"role": msg.get("role"), "content": content_list})
+
+    # 新しいユーザーメッセージを追加
+    if isinstance(user_message, str):
+        messages.append({"role": "user", "content": [{"text": user_message}]})
+    elif isinstance(user_message, list):
+        # 既にAPI仕様に沿ったリストと想定
+        messages.append({"role": "user", "content": user_message})
+    elif isinstance(user_message, dict):
+        messages.append(user_message)
+    else:
+        raise ValueError("user_messageは文字列、リスト、または辞書でなければなりません")
+
+    request_params["messages"] = messages
     
     # システムプロンプトがある場合は追加
     if system_prompt:
-        request["system"] = system_prompt
+        request_params["system"] = [{"text": system_prompt}]
+    
+    # 推論設定の追加
+    request_params["inferenceConfig"] = {
+        "maxTokens": 8192,
+    }
     
     # ツール設定がある場合は追加
     if toolConfig:
-        request["tools"] = [toolConfig]
+        request_params["toolConfig"] = {
+            "tools": [toolConfig]
+        }
     
-    # メッセージの設定
-    # 会話履歴が空でなければ、そこから会話を構築
-    if conversation_history:
-        request["messages"] = conversation_history
-    else:
-        # 空の場合は新しい会話を開始
-        request["messages"] = []
-    
-    # ユーザーメッセージの追加
-    if isinstance(user_message, str):
-        # 文字列の場合は単純なテキストメッセージ
-        user_msg = {"role": "user", "content": [{"type": "text", "text": user_message}]}
-    elif isinstance(user_message, list):
-        # リストの場合はそのまま使用（マルチモーダルなど）
-        user_msg = {"role": "user", "content": user_message}
-    elif isinstance(user_message, dict):
-        # 辞書の場合は完全なメッセージとして扱う
-        user_msg = user_message
-    else:
-        raise ValueError("user_messageは文字列、リスト、または辞書でなければなりません")
-    
-    # 最後のメッセージがユーザーからでない場合のみ追加
-    if not conversation_history or conversation_history[-1]["role"] != "user":
-        request["messages"].append(user_msg)
-    
-    add_debug_log(f"リクエスト: {json.dumps(request, ensure_ascii=False)[:200]}...", "API")
+    add_debug_log(request_params, "API")
     
     # API呼び出し
     start_time = time.time()
     try:
-        response = bedrock_session.converse(body=json.dumps(request))
+        response = bedrock_session.converse(**request_params)
         end_time = time.time()
         add_debug_log(f"API呼び出し時間: {end_time - start_time:.2f}秒", "API")
         
         # レスポンスの解析
-        response_body = json.loads(response.get("body").read())
+        response_body = response
         
         # 使用量情報の更新
         usage = response_body.get("usage", {})
@@ -88,11 +109,11 @@ def call_bedrock_converse_api(
                 "cacheWriteInputTokens": 0
             }
         
-        st.session_state["token_usage"]["inputTokens"] += usage.get("input_tokens", 0)
-        st.session_state["token_usage"]["outputTokens"] += usage.get("output_tokens", 0)
-        st.session_state["token_usage"]["totalTokens"] += usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+        st.session_state["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
+        st.session_state["token_usage"]["outputTokens"] += usage.get("outputTokens", 0)
+        st.session_state["token_usage"]["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
         
-        add_debug_log(f"レスポンス: {json.dumps(response_body, ensure_ascii=False)[:200]}...", "API")
+        add_debug_log(response_body, "API")
         return response_body, st.session_state["token_usage"]
     
     except Exception as e:
@@ -107,7 +128,9 @@ def display_assistant_message(message_content: List[Dict[str, Any]]):
         return
         
     for content in message_content:
-        if content.get("type") == "text":
+        # 'type'キーが"text"または'type'がなく'text'キーがある場合はテキストとみなす
+        content_type = content.get("type")
+        if content_type == "text" or (content_type is None and "text" in content):
             text = content.get("text", "")
             if text.strip():  # 空でない場合のみ表示
                 st.markdown(text)
@@ -126,51 +149,52 @@ def display_assistant_message(message_content: List[Dict[str, Any]]):
 def get_browser_tools_config():
     """ブラウザツールの設定を取得します"""
     return {
-        "type": "function",
-        "function": {
+        "toolSpec": {
             "name": "browser_tools",
             "description": "ブラウザを操作するための様々なツールを提供します",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "tool_name": {
-                        "type": "string",
-                        "enum": [
-                            "initialize_browser",
-                            "close_browser",
-                            "navigate_to_url",
-                            "get_dom",
-                            "click_element",
-                            "input_text",
-                            "take_screenshot",
-                            "extract_links"
-                        ],
-                        "description": "使用するツールの名前"
-                    },
-                    "params": {
-                        "type": "object",
-                        "description": "ツールのパラメータ",
-                        "properties": {
-                            "url": {
-                                "type": "string",
-                                "description": "ブラウザで開くURL"
-                            },
-                            "selector": {
-                                "type": "string",
-                                "description": "操作対象のDOM要素を指定するCSSセレクタ"
-                            },
-                            "text": {
-                                "type": "string",
-                                "description": "入力フィールドに入力するテキスト"
-                            },
-                            "extract_text_only": {
-                                "type": "boolean",
-                                "description": "DOMからテキストのみを抽出するかどうか"
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {
+                            "type": "string",
+                            "enum": [
+                                "initialize_browser",
+                                "close_browser",
+                                "navigate_to_url",
+                                "get_dom",
+                                "click_element",
+                                "input_text",
+                                "take_screenshot",
+                                "extract_links"
+                            ],
+                            "description": "使用するツールの名前"
+                        },
+                        "params": {
+                            "type": "object",
+                            "description": "ツールのパラメータ",
+                            "properties": {
+                                "url": {
+                                    "type": "string",
+                                    "description": "ブラウザで開くURL"
+                                },
+                                "selector": {
+                                    "type": "string",
+                                    "description": "操作対象のDOM要素を指定するCSSセレクタ"
+                                },
+                                "text": {
+                                    "type": "string",
+                                    "description": "入力フィールドに入力するテキスト"
+                                },
+                                "extract_text_only": {
+                                    "type": "boolean",
+                                    "description": "DOMからテキストのみを抽出するかどうか"
+                                }
                             }
                         }
-                    }
-                },
-                "required": ["tool_name"]
+                    },
+                    "required": ["tool_name"]
+                }
             }
         }
     } 
