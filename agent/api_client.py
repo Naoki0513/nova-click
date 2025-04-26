@@ -26,7 +26,7 @@ def call_bedrock_converse_api(
     Returns:
         APIレスポンスとトークン使用量の辞書のタプル
     """
-    add_debug_log("Bedrock Converse API呼び出し開始", "API")
+    add_debug_log("Bedrock Converse API呼び出し開始")
     
     # リクエストパラメータの構築
     request_params = {
@@ -82,18 +82,23 @@ def call_bedrock_converse_api(
     
     # ツール設定がある場合は追加
     if toolConfig:
+        # toolConfig がリストか単一かを判定
+        if isinstance(toolConfig, list):
+            specs = toolConfig
+        else:
+            specs = [toolConfig]
         request_params["toolConfig"] = {
-            "tools": [toolConfig]
+            "tools": specs
         }
     
-    add_debug_log(request_params, "API")
+    add_debug_log(request_params)
     
     # API呼び出し
     start_time = time.time()
     try:
         response = bedrock_session.converse(**request_params)
         end_time = time.time()
-        add_debug_log(f"API呼び出し時間: {end_time - start_time:.2f}秒", "API")
+        add_debug_log(f"API呼び出し時間: {end_time - start_time:.2f}秒")
         
         # レスポンスの解析
         response_body = response
@@ -113,12 +118,12 @@ def call_bedrock_converse_api(
         st.session_state["token_usage"]["outputTokens"] += usage.get("outputTokens", 0)
         st.session_state["token_usage"]["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
         
-        add_debug_log(response_body, "API")
+        add_debug_log(response_body)
         return response_body, st.session_state["token_usage"]
     
     except Exception as e:
         end_time = time.time()
-        add_debug_log(f"API呼び出しエラー: {str(e)}", "エラー")
+        add_debug_log(f"API呼び出しエラー: {str(e)}")
         return {"error": str(e)}, st.session_state.get("token_usage", {})
 
 def display_assistant_message(message_content: List[Dict[str, Any]]):
@@ -147,15 +152,20 @@ def display_assistant_message(message_content: List[Dict[str, Any]]):
                 st.code(json.dumps(result, indent=2, ensure_ascii=False), language="json")
 
 def get_browser_tools_config():
-    """ブラウザ初期化ツールの設定を取得します"""
-    return {
-        "toolSpec": {
-            "name": "initialize_browser",
-            "description": "Playwrightを使って通常のChromeブラウザを起動します",
-            "inputSchema": {
-                "json": {
-                    "type": "object"
-                }
+    """利用可能なブラウザ操作ツールの設定を取得します (初期化 & DOM情報取得)"""
+    return [
+        {
+            "toolSpec": {
+                "name": "initialize_browser",
+                "description": "Playwrightを使って通常のChromeブラウザを起動します",
+                "inputSchema": { "json": { "type": "object" } }
+            }
+        },
+        {
+            "toolSpec": {
+                "name": "get_dom_info",
+                "description": "現在のページのDOM情報を取得します",
+                "inputSchema": { "json": { "type": "object" } }
             }
         }
-    } 
+    ] 

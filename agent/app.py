@@ -130,16 +130,16 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
     if not user_input:
         return
 
-    add_debug_log(f"ユーザー入力: {user_input}", "会話")
+    add_debug_log(f"ユーザー入力: {user_input}")
 
     # システムプロンプト設定
     if not system_prompt:
         system_prompt = get_system_prompt()
 
-    # ツール設定 (function calling用にtoolChoiceをautoに設定)
-    single_tool_spec = get_browser_tools_config()
+    # 利用可能なツール仕様を取得
+    tool_specs = get_browser_tools_config()
     tool_config = {
-        "tools": [single_tool_spec],
+        "tools": tool_specs,
         "toolChoice": {"auto": {}}
     }
 
@@ -161,10 +161,12 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
                     "inferenceConfig": {"maxTokens": 8192},
                     "toolConfig": tool_config
                 }
+                # リクエストログ
+                add_debug_log(request_params)
                 # API呼び出し
                 response = bedrock_session.converse(**request_params)
-                # レスポンスをログ出力
-                add_debug_log(response, "API")
+                # レスポンスログ
+                add_debug_log(response)
 
                 # トークン使用量を更新
                 usage = response.get("usage", {})
@@ -174,7 +176,7 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             err_msg = e.response.get("Error", {}).get("Message", str(e))
-            add_debug_log(f"API呼び出しエラー: {error_code} - {err_msg}", "API")
+            add_debug_log(f"API呼び出しエラー: {error_code} - {err_msg}")
             if error_code == "ModelErrorException":
                 st.error("モデル内部で予期せぬエラーが発生しました。もう一度お試しください。")
             else:
@@ -182,7 +184,7 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
             break
         except Exception as e:
             err_msg = str(e)
-            add_debug_log(f"想定外のエラー: {err_msg}", "エラー")
+            add_debug_log(f"想定外のエラー: {err_msg}")
             st.error(f"エラーが発生しました: {err_msg}")
             break
 
@@ -256,7 +258,7 @@ def run_app():
         credentials = load_credentials(credentials_path)
         if credentials:
             st.session_state["credentials"] = credentials
-            add_debug_log("認証情報を自動読み込みしました", "認証")
+            add_debug_log("認証情報を自動読み込みしました")
         else:
             st.error("認証情報の読み込みに失敗しました。credentials/aws_credentials.json を確認してください。")
     except Exception as e:

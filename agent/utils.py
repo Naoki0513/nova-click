@@ -24,14 +24,14 @@ def load_credentials(file_path):
             project_root = os.path.dirname(current_dir)  # agent ディレクトリの親 = プロジェクトルート
             full_path = os.path.join(project_root, file_path)
             
-        add_debug_log(f"認証情報を読み込み中: {full_path}", "認証")
+        add_debug_log(f"認証情報を読み込み中: {full_path}")
         with open(full_path, 'r') as f:
             credentials = json.load(f)
-            add_debug_log(f"認証情報を読み込みました", "認証")
+            add_debug_log("認証情報を読み込みました")
             return credentials
     except Exception as e:
         error_msg = f"認証情報の読み込みに失敗しました: {e}"
-        add_debug_log(error_msg, "エラー")
+        add_debug_log(error_msg)
         st.error(error_msg)
         return None
 
@@ -117,6 +117,20 @@ def add_debug_log(msg, group=None):
     # ログを追加
     st.session_state["debug_logs"][group].append(log_entry)
     
+    # 新規ログをリアルタイムに表示
+    try:
+        placeholder = st.session_state.get("log_placeholder")
+        if placeholder:
+            with placeholder:
+                # フォーマットされたメッセージの表示
+                if isinstance(formatted_msg, (dict, list)):
+                    display_msg = json.dumps(formatted_msg, ensure_ascii=False)
+                else:
+                    display_msg = formatted_msg
+                st.text(f"{now} [{group}] {display_msg}")
+    except Exception:
+        pass
+
     return log_entry
 
 def extract_text_from_assistant_message(message):
@@ -149,7 +163,7 @@ def extract_text_from_assistant_message(message):
 def clear_conversation_history():
     """会話履歴をクリアします。"""
     st.session_state["conversation_history"] = []
-    add_debug_log("会話履歴をクリアしました", "会話")
+    add_debug_log("会話履歴をクリアしました")
 
 def unicode_escape_str(s):
     """文字列内のUnicodeエスケープシーケンスを変換します。"""
