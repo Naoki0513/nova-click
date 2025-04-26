@@ -147,53 +147,14 @@ def display_assistant_message(message_content: List[Dict[str, Any]]):
                 st.code(json.dumps(result, indent=2, ensure_ascii=False), language="json")
 
 def get_browser_tools_config():
-    """ブラウザツールの設定を取得します"""
+    """ブラウザ初期化ツールの設定を取得します"""
     return {
         "toolSpec": {
-            "name": "browser_tools",
-            "description": "ブラウザを操作するための様々なツールを提供します",
+            "name": "initialize_browser",
+            "description": "Playwrightを使って通常のChromeブラウザを起動します",
             "inputSchema": {
                 "json": {
-                    "type": "object",
-                    "properties": {
-                        "tool_name": {
-                            "type": "string",
-                            "enum": [
-                                "initialize_browser",
-                                "close_browser",
-                                "navigate_to_url",
-                                "get_dom",
-                                "click_element",
-                                "input_text",
-                                "take_screenshot",
-                                "extract_links"
-                            ],
-                            "description": "使用するツールの名前"
-                        },
-                        "params": {
-                            "type": "object",
-                            "description": "ツールのパラメータ",
-                            "properties": {
-                                "url": {
-                                    "type": "string",
-                                    "description": "ブラウザで開くURL"
-                                },
-                                "selector": {
-                                    "type": "string",
-                                    "description": "操作対象のDOM要素を指定するCSSセレクタ"
-                                },
-                                "text": {
-                                    "type": "string",
-                                    "description": "入力フィールドに入力するテキスト"
-                                },
-                                "extract_text_only": {
-                                    "type": "boolean",
-                                    "description": "DOMからテキストのみを抽出するかどうか"
-                                }
-                            }
-                        }
-                    },
-                    "required": ["tool_name"]
+                    "type": "object"
                 }
             }
         }

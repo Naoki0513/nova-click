@@ -18,6 +18,8 @@ browser-agent/
 │   └── utils.py           # ユーティリティ関数
 ├── credentials/           # 認証情報ディレクトリ
 │   └── aws_credentials.json # AWS認証情報 (gitignoreに追加すること)
+├── tests/                 # テスト用スクリプト
+│   └── test_initialize_browser.py
 ├── main.py                # プロジェクトのメインエントリーポイント
 ├── requirements.txt       # 依存ライブラリ
 └── README.md              # このファイル
@@ -55,6 +57,13 @@ streamlit run main.py
 4. ブラウザで指示を入力
    - 例: 「Amazonで商品を検索して」
    - 例: 「ニュースサイトを開いて最新記事を教えて」
+
+## テスト
+テスト用スクリプトは `tests/` ディレクトリに配置されています。ブラウザ初期化を確認するには以下のコマンドを実行してください：
+```bash
+cd browser-agent
+streamlit run tests/test_initialize_browser.py
+```
 
 ## 技術仕様
 - Streamlit: UIフレームワーク
