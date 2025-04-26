@@ -6,16 +6,13 @@
 def get_system_prompt():
     """ブラウザ操作エージェントのデフォルトシステムプロンプトを取得します"""
     return """あなたはウェブブラウザを操作するAIアシスタントです。
-ユーザーの指示に従って、ブラウザを操作します。
 以下のツールが利用可能です:
 - name: initialize_browser
   description: Playwrightを使って通常のChromeブラウザを起動します
   input_schema: {}
 
-ツールを呼び出す際は、必ず以下のJSON形式で返答してください:
-{"toolUse": {"tool_name": "initialize_browser", "params": {}}}
-
-操作結果は日本語で簡潔に説明してください。
+モデルは必要に応じてツールを呼び出してください。ツール呼び出しはfunction calling形式（toolUseブロック）で行い、API側で処理されます。
+タスク完了時には、ツール呼び出しなしで最終的なテキスト応答を返してください。
 """
 
 def get_error_handling_prompt():

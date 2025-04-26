@@ -1,10 +1,12 @@
 import streamlit as st
 import boto3
 import base64
+import json
 from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history
 from .api_client import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
 from .browser_tools import dispatch_browser_tool
 from .prompts import get_system_prompt
+from botocore.exceptions import ClientError
 
 # セッション状態の初期化
 def initialize_session_state():
@@ -26,7 +28,8 @@ def initialize_session_state():
     if "page" not in st.session_state:
         st.session_state["page"] = None
     if "model_id" not in st.session_state:
-        st.session_state["model_id"] = "us.amazon.nova-pro-v1:0"
+        # デフォルトモデルをAnthropic Claudeに設定
+        st.session_state["model_id"] = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 
 def setup_page_layout():
     """ページレイアウトの設定"""
@@ -133,9 +136,12 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
     if not system_prompt:
         system_prompt = get_system_prompt()
 
-    # ツール設定
+    # ツール設定 (function calling用にtoolChoiceをautoに設定)
     single_tool_spec = get_browser_tools_config()
-    tool_config = {"tools": [single_tool_spec]}
+    tool_config = {
+        "tools": [single_tool_spec],
+        "toolChoice": {"auto": {}}
+    }
 
     # API仕様のメッセージリストを初期化
     messages = []
@@ -144,31 +150,40 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
 
     # stopReason が 'end_turn' になるまで繰り返す
     while True:
-        with st.spinner("回答を生成中..."):
-            # Converse API 呼び出し
-            request_params = {
-                "modelId": st.session_state["model_id"],
-                "messages": messages,
-                "system": [{"text": system_prompt}],
-                "inferenceConfig": {"maxTokens": 8192},
-                "toolConfig": tool_config
-            }
-            # リクエスト内容をログ出力
-            add_debug_log(request_params, "API")
-            # API 呼び出し
-            response = bedrock_session.converse(**request_params)
-            # レスポンスをログ出力
-            add_debug_log(response, "API")
+        # API呼び出しおよびエラー処理
+        try:
+            with st.spinner("回答を生成中..."):
+                # リクエストパラメータの構築（常にツール設定を含む）
+                request_params = {
+                    "modelId": st.session_state["model_id"],
+                    "messages": messages,
+                    "system": [{"text": system_prompt}],
+                    "inferenceConfig": {"maxTokens": 8192},
+                    "toolConfig": tool_config
+                }
+                # API呼び出し
+                response = bedrock_session.converse(**request_params)
+                # レスポンスをログ出力
+                add_debug_log(response, "API")
 
-            # トークン使用量を更新
-            usage = response.get("usage", {})
-            st.session_state["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
-            st.session_state["token_usage"]["outputTokens"] += usage.get("outputTokens", 0)
-            st.session_state["token_usage"]["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
-
-        # エラー時は終了
-        if "error" in response:
-            st.error(f"APIエラー: {response['error']}")
+                # トークン使用量を更新
+                usage = response.get("usage", {})
+                st.session_state["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
+                st.session_state["token_usage"]["outputTokens"] += usage.get("outputTokens", 0)
+                st.session_state["token_usage"]["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            err_msg = e.response.get("Error", {}).get("Message", str(e))
+            add_debug_log(f"API呼び出しエラー: {error_code} - {err_msg}", "API")
+            if error_code == "ModelErrorException":
+                st.error("モデル内部で予期せぬエラーが発生しました。もう一度お試しください。")
+            else:
+                st.error(f"APIエラー: {error_code} - {err_msg}")
+            break
+        except Exception as e:
+            err_msg = str(e)
+            add_debug_log(f"想定外のエラー: {err_msg}", "エラー")
+            st.error(f"エラーが発生しました: {err_msg}")
             break
 
         output = response.get("output", {})
@@ -183,12 +198,11 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
         # 会話履歴にアシスタントメッセージ追加
         messages.append({"role": "assistant", "content": message.get("content", [])})
 
-        # ツール呼び出しがある場合の処理
-        if stop_reason == "tool_use":
-            # toolUseブロック抽出
-            tool_calls = [c["toolUse"] for c in message.get("content", []) if "toolUse" in c]
+        # コンテンツに toolUse が含まれていれば必ず処理
+        tool_calls = [c["toolUse"] for c in message.get("content", []) if "toolUse" in c]
+        if tool_calls:
             for tool in tool_calls:
-                tool_name = tool.get("name")
+                tool_name = tool.get("name") or tool.get("tool_name") or tool.get("toolUseId")
                 params = tool.get("input") or {}
                 # ツール実行
                 st.write(f"ツール実行: {tool_name}")
@@ -198,7 +212,7 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
                 st.write("実行結果:")
                 st.json(result)
 
-                # toolResultをユーザーメッセージとして追加
+                # toolResult をユーザーメッセージとして追加
                 tool_result_block = {
                     "toolResult": {
                         "toolUseId": tool.get("toolUseId"),
@@ -207,7 +221,7 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
                     }
                 }
                 messages.append({"role": "user", "content": [tool_result_block]})
-            # 続けて次のリクエストへ
+            # ツール結果を踏まえて再度モデルに問い合わせ
             continue
 
         # end_turnなどでループを抜ける
@@ -251,25 +265,24 @@ def run_app():
     # リージョン (非表示)
     region = "us-west-2"
     
-    # 入力フォーム - チャットUIに変更
+    # 入力フォーム - テキスト入力
     with user_input_container:
-        user_input = st.chat_input("ブラウザへの指示を入力してください")
-        
+        user_input = st.text_input("ブラウザへの指示を入力してください")
         if user_input:
             if "credentials" in st.session_state:
                 try:
                     # ユーザー入力を表示
                     with st.chat_message("user"):
                         st.markdown(user_input)
-                    
-                    # Bedrockセッションの作成
+
+                    # Bedrock セッションの作成
                     bedrock_runtime = boto3.client(
                         service_name="bedrock-runtime",
                         region_name=region,
                         aws_access_key_id=st.session_state["credentials"].get("aws_access_key_id"),
                         aws_secret_access_key=st.session_state["credentials"].get("aws_secret_access_key")
                     )
-                    
+
                     # ユーザー入力を処理
                     with st.chat_message("assistant"):
                         handle_user_input(

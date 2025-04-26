@@ -2,6 +2,12 @@ import streamlit as st
 from playwright.sync_api import sync_playwright
 from .utils import add_debug_log
 
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 def initialize_browser():
     """Playwrightを使って通常のChromeブラウザを起動します"""
     if st.session_state.get('browser') is None:
@@ -9,6 +15,10 @@ def initialize_browser():
             playwright = sync_playwright().start()
             browser = playwright.chromium.launch(channel='chrome', headless=False)
             page = browser.new_page()
+
+            # Google を開く
+            page.goto("https://www.google.com")
+            add_debug_log('Google を開きました', 'ブラウザ')
 
             st.session_state['playwright'] = playwright
             st.session_state['browser'] = browser

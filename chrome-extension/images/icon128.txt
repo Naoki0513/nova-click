@@ -1,2 +1,0 @@
-This is a placeholder for the 128x128 icon.
-In a real extension, this would be a PNG file.
