@@ -1,7 +1,8 @@
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, '..', '..')))
 import streamlit as st
-from agent.browser_tools import initialize_browser, get_raw_html, get_structured_dom, get_ax_tree, shutdown_browser
+from agent.browser.worker import initialize_browser, shutdown_browser
+from agent.browser.tools import get_raw_html, get_structured_dom, get_ax_tree
 import atexit
 
 def main():

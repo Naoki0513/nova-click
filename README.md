@@ -10,19 +10,29 @@
 browser-agent/
 ├── agent/                 # エージェントコードディレクトリ
 │   ├── __init__.py        # パッケージ初期化
-│   ├── app.py             # メインアプリケーションコード
-│   ├── api_client.py      # Bedrock API連携
-│   ├── browser_tools.py   # ブラウザ操作ツール
 │   ├── main.py            # エージェントパッケージのエントリーポイント
+│   ├── app.py             # メインアプリケーションコード
 │   ├── prompts.py         # プロンプト定義
-│   └── utils.py           # ユーティリティ関数
+│   ├── utils.py           # ユーティリティ関数
+│   ├── api/               # API クライアント関連
+│   │   ├── __init__.py
+│   │   └── client.py      # Bedrock Converse API 連携
+│   └── browser/           # ブラウザ操作関連
+│       ├── __init__.py
+│       ├── worker.py      # ワーカースレッド処理
+│       ├── tools.py       # ツールの高レベル API
+│       └── dom.py         # DOM パーサーとデータクラス
+├── js/                    # buildDomTree.js など
+│   └── buildDomTree.js
 ├── credentials/           # 認証情報ディレクトリ
-│   └── aws_credentials.json # AWS認証情報 (gitignoreに追加すること)
+│   └── aws_credentials.json
 ├── tests/                 # テスト用スクリプト
-│   └── test_initialize_browser.py
-├── main.py                # プロジェクトのメインエントリーポイント
+│   ├── test_initialize_browser.py
+│   ├── test_get_dom_info.py
+│   └── test_click_and_input.py
 ├── requirements.txt       # 依存ライブラリ
-└── README.md              # このファイル
+├── README.md              # このファイル
+└── main.py                # プロジェクトのメインエントリーポイント
 ```
 
 ## 機能

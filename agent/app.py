@@ -3,8 +3,8 @@ import boto3
 import base64
 import json
 from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history
-from .api_client import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
-from .browser_tools import dispatch_browser_tool
+from .api import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
+from .browser import dispatch_browser_tool
 from .prompts import get_system_prompt
 from botocore.exceptions import ClientError
 from typing import Dict, Any

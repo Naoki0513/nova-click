@@ -13,6 +13,17 @@ def get_system_prompt():
 - name: get_dom_info
   description: アクセシビリティツリーを基に現在のページのDOM情報を取得します
   input_schema: {}
+- name: click_element
+  description: アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします
+  input_schema:
+    role: string
+    name: string
+- name: input_text
+  description: アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力しEnterキーを押します
+  input_schema:
+    role: string
+    name: string
+    text: string
 
 モデルは必要に応じてツールを呼び出してください。ツール呼び出しはfunction calling形式（toolUseブロック）で行い、API側で処理されます。
 タスク完了時には、ツール呼び出しなしで最終的なテキスト応答を返してください。

@@ -1,7 +1,7 @@
 import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, "..", "..")))
 import streamlit as st
-from agent.browser_tools import initialize_browser
+from agent.browser.worker import initialize_browser
 
 def main():
     st.title("Playwright ブラウザ初期化テスト")
