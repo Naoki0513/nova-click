@@ -7,6 +7,7 @@ from .api_client import call_bedrock_converse_api, display_assistant_message, ge
 from .browser_tools import dispatch_browser_tool
 from .prompts import get_system_prompt
 from botocore.exceptions import ClientError
+from typing import Dict, Any
 
 # セッション状態の初期化
 def initialize_session_state():
@@ -28,8 +29,8 @@ def initialize_session_state():
     if "page" not in st.session_state:
         st.session_state["page"] = None
     if "model_id" not in st.session_state:
-        # デフォルトモデルをAnthropic Claudeに設定
-        st.session_state["model_id"] = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        # デフォルトモデルをAmazon Nova Proに設定
+        st.session_state["model_id"] = "us.amazon.nova-pro-v1:0"
 
 def setup_page_layout():
     """ページレイアウトの設定"""
@@ -158,7 +159,7 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
                     "modelId": st.session_state["model_id"],
                     "messages": messages,
                     "system": [{"text": system_prompt}],
-                    "inferenceConfig": {"maxTokens": 8192},
+                    "inferenceConfig": get_inference_config(st.session_state["model_id"]),
                     "toolConfig": tool_config
                 }
                 # リクエストログ
@@ -228,6 +229,20 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
 
         # end_turnなどでループを抜ける
         break
+
+def get_inference_config(model_id: str) -> Dict[str, Any]:
+    """
+    モデルごとに最適な推論パラメータを返す
+    """
+    # 共通で許容される最大値。Nova Pro の推奨は ~3 000
+    cfg = {"maxTokens": 3000}
+
+    if "amazon.nova" in model_id:          # Nova 系
+        cfg.update({"topP": 1, "temperature": 1})
+    elif "anthropic.claude" in model_id:   # Claude 系（必要なら）
+        cfg.update({"temperature": 0})   # 例
+    return cfg
+
 
 def run_app():
     """アプリケーションを実行します"""
