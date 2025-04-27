@@ -164,7 +164,7 @@ def get_browser_tools_config():
         {
             "toolSpec": {
                 "name": "get_dom_info",
-                "description": "現在のページのDOM情報を取得します",
+                "description": "アクセシビリティツリーを基に現在のページのDOM情報を取得します",
                 "inputSchema": { "json": { "type": "object" } }
             }
         }

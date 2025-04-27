@@ -154,14 +154,20 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
         # API呼び出しおよびエラー処理
         try:
             with st.spinner("回答を生成中..."):
-                # リクエストパラメータの構築（常にツール設定を含む）
+                # 推論設定を取得
+                inference_config = get_inference_config(st.session_state["model_id"])
+                # リクエストパラメータを構築（topKはadditionalModelRequestFields経由）
                 request_params = {
                     "modelId": st.session_state["model_id"],
                     "messages": messages,
                     "system": [{"text": system_prompt}],
-                    "inferenceConfig": get_inference_config(st.session_state["model_id"]),
+                    "inferenceConfig": inference_config,
                     "toolConfig": tool_config
                 }
+                # Novaモデルではgreedy decodingとしてtopK=1をadditionalModelRequestFieldsで指定
+                if "amazon.nova" in st.session_state["model_id"]:
+                    # topKはadditionalModelRequestFields内のinferenceConfigとして渡す
+                    request_params["additionalModelRequestFields"] = {"inferenceConfig": {"topK": 1}}
                 # リクエストログ
                 add_debug_log(request_params)
                 # API呼び出し

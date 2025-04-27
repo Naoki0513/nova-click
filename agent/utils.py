@@ -6,6 +6,7 @@ import string
 import datetime
 import inspect
 import traceback
+import sys # 標準エラー出力用にインポート
 
 def random_id(length=28):
     """指定された長さのランダムな英数字IDを生成します。"""
@@ -74,64 +75,108 @@ def display_debug_logs():
 
 def add_debug_log(msg, group=None):
     """
-    デバッグログメッセージをセッション状態に追加して自動的に表示します。
-    
+    デバッグログメッセージを処理します。
+    Streamlit 環境ではセッション状態に追加し、それ以外では標準出力に出力します。
+
     引数:
         msg: ログメッセージ (文字列、辞書、リスト、例外)
         group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
     """
-    # デバッグログが初期化されていない場合は初期化
-    if "debug_logs" not in st.session_state:
-        st.session_state["debug_logs"] = {}
-    
+    # Streamlit セッション状態が利用可能かチェック
+    # セッション状態自体が存在し、かつメインアプリで設定されるであろう
+    # "log_placeholder" キーが存在するかで判断
+    streamlit_active = False
+    try:
+        # st.session_state 自体が存在しない場合 AttributeError が発生する可能性
+        if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+             streamlit_active = True
+    except Exception:
+         # st.session_state へのアクセスで予期せぬエラーが発生した場合も非アクティブ扱い
+         streamlit_active = False
+
     # 呼び出し元の関数名を取得
     if group is None:
-        frame = inspect.currentframe().f_back
-        function_name = frame.f_code.co_name
-        group = function_name
-    
-    # グループが存在しない場合は初期化
-    if group not in st.session_state["debug_logs"]:
-        st.session_state["debug_logs"][group] = []
-    
+        try:
+            frame = inspect.currentframe().f_back
+            function_name = frame.f_code.co_name
+            group = function_name
+        except AttributeError:
+            group = "Unknown"
+
     # タイムスタンプを取得
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    
-    # メッセージをフォーマット
+
+    # --- メッセージのフォーマット (共通処理) ---
+    log_entry_message_for_streamlit = None # Streamlit用
+    log_entry_message_for_print = None    # 標準出力用
+
     if isinstance(msg, (dict, list)):
-        formatted_msg = msg  # JSONとして直接保存
+        log_entry_message_for_streamlit = msg # Streamlitは元の形式を保持
+        try:
+            # 標準出力用はJSON文字列化を試みる
+            log_entry_message_for_print = json.dumps(msg, ensure_ascii=False, indent=2)
+        except TypeError:
+            log_entry_message_for_print = str(msg)
     elif isinstance(msg, Exception):
-        formatted_msg = {
+        traceback_str = f"Error: {str(msg)}\\n{traceback.format_exc()}"
+        log_entry_message_for_print = traceback_str
+        log_entry_message_for_streamlit = { # Streamlit用は構造化
             "error": str(msg),
             "traceback": traceback.format_exc()
         }
     else:
-        formatted_msg = str(msg)
-    
-    # ログエントリの作成
+        # 文字列の場合は両方同じ
+        log_entry_message_for_print = str(msg)
+        log_entry_message_for_streamlit = str(msg)
+
+    # 返却用のログエントリ (Streamlit形式を基本とする)
     log_entry = {
         "timestamp": now,
-        "message": formatted_msg
+        "message": log_entry_message_for_streamlit
     }
-    
-    # ログを追加
-    st.session_state["debug_logs"][group].append(log_entry)
-    
-    # 新規ログをリアルタイムに表示
-    try:
-        placeholder = st.session_state.get("log_placeholder")
-        if placeholder:
-            with placeholder:
-                # フォーマットされたメッセージの表示
-                if isinstance(formatted_msg, (dict, list)):
-                    display_msg = json.dumps(formatted_msg, ensure_ascii=False)
-                else:
-                    display_msg = formatted_msg
-                st.text(f"{now} [{group}] {display_msg}")
-    except Exception:
-        pass
 
-    return log_entry
+    if streamlit_active:
+        # --- Streamlit 環境での処理 (従来通り) ---
+        try:
+            # デバッグログ辞書がなければ初期化
+            if "debug_logs" not in st.session_state:
+                st.session_state["debug_logs"] = {}
+
+            # グループリストがなければ初期化
+            if group not in st.session_state["debug_logs"]:
+                st.session_state["debug_logs"][group] = []
+
+            # ログを追加
+            st.session_state["debug_logs"][group].append(log_entry)
+
+            # 画面上のプレースホルダにリアルタイム表示
+            placeholder = st.session_state.get("log_placeholder")
+            if placeholder:
+                 # 表示用のメッセージ整形
+                 display_msg = ""
+                 if isinstance(log_entry["message"], (dict, list)):
+                     try:
+                         # 辞書/リストはJSON文字列として表示
+                         display_msg = json.dumps(log_entry["message"], ensure_ascii=False)
+                     except TypeError:
+                         display_msg = str(log_entry["message"]) # JSON化できなければ文字列
+                 else:
+                     display_msg = str(log_entry["message"])
+
+                 # プレースホルダーに追記
+                 with placeholder.container(): # container() を使って追記エリアを確保
+                      st.text(f"{now} [{group}] {display_msg}")
+
+        except Exception as e:
+             # Streamlit 関連のエラーが発生した場合、標準エラーに出力
+             print(f"ERROR in add_debug_log (Streamlit Active): {e}\\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+
+    else:
+        # --- Streamlit 環境以外での処理 (標準出力) ---
+        log_output = f"{now} [{group}] {log_entry_message_for_print}"
+        print(log_output, flush=True)
+
+    return log_entry # どちらのケースでもログエントリを返す
 
 def extract_text_from_assistant_message(message):
     """アシスタントメッセージからテキスト部分を抽出します。"""
@@ -162,8 +207,15 @@ def extract_text_from_assistant_message(message):
 
 def clear_conversation_history():
     """会話履歴をクリアします。"""
-    st.session_state["conversation_history"] = []
-    add_debug_log("会話履歴をクリアしました")
+    # Streamlit 環境でのみ st.session_state を操作
+    try:
+        if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+            st.session_state["conversation_history"] = []
+            add_debug_log("会話履歴をクリアしました") # この呼び出しも環境に応じて処理される
+        else:
+            print("clear_conversation_history: Not in Streamlit environment, skipping session state clear.", flush=True)
+    except Exception as e:
+        print(f"ERROR in clear_conversation_history: {e}\\n{traceback.format_exc()}", file=sys.stderr, flush=True)
 
 def unicode_escape_str(s):
     """文字列内のUnicodeエスケープシーケンスを変換します。"""
