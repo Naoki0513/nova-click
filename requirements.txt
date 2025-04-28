@@ -9,7 +9,4 @@ playwright==1.40.0
 playwright-stealth>=1.0.0
 
 # HTML解析
-beautifulsoup4==4.12.2
-
-# その他
-webbrowser
+beautifulsoup4==4.12.2   
