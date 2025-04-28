@@ -1,10 +1,20 @@
-import streamlit as st
 import os
 import json
 import datetime
 import inspect
 import traceback
-import sys 
+import sys
+import logging
+from typing import Dict, Any, Optional, Union, List
+
+logger = logging.getLogger(__name__)
+
+# Streamlitのインポートを条件付きで行う
+try:
+    import streamlit as st
+    STREAMLIT_AVAILABLE = True
+except ImportError:
+    STREAMLIT_AVAILABLE = False
 
 def load_credentials(file_path):
     """認証情報をJSONファイルから読み込みます。"""
@@ -19,19 +29,27 @@ def load_credentials(file_path):
             project_root = os.path.dirname(current_dir)  # agent ディレクトリの親 = プロジェクトルート
             full_path = os.path.join(project_root, file_path)
             
-        add_debug_log(f"認証情報を読み込み中: {full_path}")
+        add_debug_log(f"認証情報を読み込み中: {full_path}", level="INFO")
         with open(full_path, 'r') as f:
             credentials = json.load(f)
-            add_debug_log("認証情報を読み込みました")
+            add_debug_log("認証情報を読み込みました", level="INFO")
             return credentials
     except Exception as e:
         error_msg = f"認証情報の読み込みに失敗しました: {e}"
-        add_debug_log(error_msg)
-        st.error(error_msg)
+        add_debug_log(error_msg, level="ERROR")
+        
+        # Streamlit環境の場合のみエラー表示
+        if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+            st.error(error_msg)
+            
         return None
 
 def display_debug_logs():
     """デバッグログをグループ化してJSON形式で表示します。"""
+    if not STREAMLIT_AVAILABLE:
+        logger.warning("Streamlitが利用できないため、display_debug_logs()は何も表示しません")
+        return
+    
     if "log_placeholder" in st.session_state:
         # プレースホルダを使って表示
         with st.session_state["log_placeholder"].container():
@@ -46,70 +64,76 @@ def display_debug_logs():
                     # ログエントリをJSON形式で表示
                     st.json(entries, expanded=False)
 
-def add_debug_log(msg, group=None):
+def add_debug_log(msg, group=None, level: str = "DEBUG"):
     """
     デバッグログメッセージを処理します。
-    Streamlit 環境ではセッション状態に追加し、それ以外では標準出力に出力します。
+    Streamlit 環境ではセッション状態に追加し、それ以外ではロガーを使用します。
 
     引数:
         msg: ログメッセージ (文字列、辞書、リスト、例外)
         group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
+        level: ログレベル ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
     """
     # Streamlit セッション状態が利用可能かチェック
-    # セッション状態自体が存在し、かつメインアプリで設定されるであろう
-    # "log_placeholder" キーが存在するかで判断
     streamlit_active = False
-    try:
-        # st.session_state 自体が存在しない場合 AttributeError が発生する可能性
-        if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-             streamlit_active = True
-    except Exception:
-         # st.session_state へのアクセスで予期せぬエラーが発生した場合も非アクティブ扱い
-         streamlit_active = False
+    if STREAMLIT_AVAILABLE:
+        try:
+            # st.session_state 自体が存在し、かつ"log_placeholder"キーが存在するか
+            if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+                 streamlit_active = True
+        except Exception:
+             # st.session_state へのアクセスで予期せぬエラーが発生した場合も非アクティブ扱い
+             streamlit_active = False
 
     # 呼び出し元の関数名を取得
     if group is None:
         try:
-            frame = inspect.currentframe().f_back
-            function_name = frame.f_code.co_name
-            group = function_name
-        except AttributeError:
+            frame = inspect.currentframe()
+            if frame and frame.f_back:
+                function_name = frame.f_back.f_code.co_name
+                group = function_name
+            else:
+                group = "Unknown"
+        except (AttributeError, ValueError):
             group = "Unknown"
+        finally:
+            del frame
 
     # タイムスタンプを取得
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
     # --- メッセージのフォーマット (共通処理) ---
     log_entry_message_for_streamlit = None # Streamlit用
-    log_entry_message_for_print = None    # 標準出力用
+    log_entry_message_for_logger = None    # ロガー用
 
     if isinstance(msg, (dict, list)):
         log_entry_message_for_streamlit = msg # Streamlitは元の形式を保持
         try:
-            # 標準出力用はJSON文字列化を試みる
-            log_entry_message_for_print = json.dumps(msg, ensure_ascii=False, indent=2)
+            # ロガー用はJSON文字列化を試みる
+            log_entry_message_for_logger = json.dumps(msg, ensure_ascii=False, indent=2)
         except TypeError:
-            log_entry_message_for_print = str(msg)
+            log_entry_message_for_logger = str(msg)
     elif isinstance(msg, Exception):
-        traceback_str = f"Error: {str(msg)}\\n{traceback.format_exc()}"
-        log_entry_message_for_print = traceback_str
+        traceback_str = f"Error: {str(msg)}\n{traceback.format_exc()}"
+        log_entry_message_for_logger = traceback_str
         log_entry_message_for_streamlit = { # Streamlit用は構造化
             "error": str(msg),
             "traceback": traceback.format_exc()
         }
     else:
         # 文字列の場合は両方同じ
-        log_entry_message_for_print = str(msg)
+        log_entry_message_for_logger = str(msg)
         log_entry_message_for_streamlit = str(msg)
 
     # 返却用のログエントリ (Streamlit形式を基本とする)
     log_entry = {
         "timestamp": now,
-        "message": log_entry_message_for_streamlit
+        "message": log_entry_message_for_streamlit,
+        "level": level
     }
 
     if streamlit_active:
-        # --- Streamlit 環境での処理 (従来通り) ---
+        # --- Streamlit 環境での処理 ---
         try:
             # デバッグログ辞書がなければ初期化
             if "debug_logs" not in st.session_state:
@@ -138,16 +162,26 @@ def add_debug_log(msg, group=None):
 
                  # プレースホルダーに追記
                  with placeholder.container(): # container() を使って追記エリアを確保
-                      st.text(f"{now} [{group}] {display_msg}")
+                      st.text(f"{now} [{level}] [{group}] {display_msg}")
 
         except Exception as e:
              # Streamlit 関連のエラーが発生した場合、標準エラーに出力
-             print(f"ERROR in add_debug_log (Streamlit Active): {e}\\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+             print(f"ERROR in add_debug_log (Streamlit Active): {e}\n{traceback.format_exc()}", file=sys.stderr, flush=True)
 
+    log_output = f"[{group}] {log_entry_message_for_logger}"
+    
+    if level == "DEBUG":
+        logger.debug(log_output)
+    elif level == "INFO":
+        logger.info(log_output)
+    elif level == "WARNING":
+        logger.warning(log_output)
+    elif level == "ERROR":
+        logger.error(log_output)
+    elif level == "CRITICAL":
+        logger.critical(log_output)
     else:
-        # --- Streamlit 環境以外での処理 (標準出力) ---
-        log_output = f"{now} [{group}] {log_entry_message_for_print}"
-        print(log_output, flush=True)
+        logger.debug(log_output)
 
     return log_entry # どちらのケースでもログエントリを返す
 
@@ -182,10 +216,10 @@ def clear_conversation_history():
     """会話履歴をクリアします。"""
     # Streamlit 環境でのみ st.session_state を操作
     try:
-        if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+        if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
             st.session_state["conversation_history"] = []
-            add_debug_log("会話履歴をクリアしました") # この呼び出しも環境に応じて処理される
+            add_debug_log("会話履歴をクリアしました", level="INFO") # この呼び出しも環境に応じて処理される
         else:
-            print("clear_conversation_history: Not in Streamlit environment, skipping session state clear.", flush=True)
+            logger.info("Streamlit環境ではないため、会話履歴のクリアをスキップします")
     except Exception as e:
-        print(f"ERROR in clear_conversation_history: {e}\\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+        logger.error(f"会話履歴のクリア中にエラーが発生しました: {e}\n{traceback.format_exc()}")

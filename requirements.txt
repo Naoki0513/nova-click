@@ -1,5 +1,15 @@
+# UI関連
 streamlit==1.30.0
+
+# AWS関連
 boto3==1.33.6
+
+# ブラウザ自動化
 playwright==1.40.0
 playwright-stealth>=1.0.0
-beautifulsoup4==4.12.2 
+
+# HTML解析
+beautifulsoup4==4.12.2
+
+# その他
+webbrowser

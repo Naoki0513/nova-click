@@ -1,6 +1,6 @@
 # ブラウザ操作エージェント
 
-このプロジェクトは、自然言語指示でブラウザを操作するAIエージェントです。Streamlitベースのインターフェースから、Webブラウザを自動的に操作できます。
+このプロジェクトは、自然言語指示でブラウザを操作するAIエージェントです。CLIモードとStreamlitベースのUIモードの両方から、Webブラウザを自動的に操作できます。
 
 ## 構成
 
@@ -10,26 +10,28 @@
 browser-agent/
 ├── agent/                 # エージェントコードディレクトリ
 │   ├── __init__.py        # パッケージ初期化
-│   ├── main.py            # エージェントパッケージのエントリーポイント
-│   ├── app.py             # メインアプリケーションコード
+│   ├── core.py            # コアロジック（UI非依存）
 │   ├── prompts.py         # プロンプト定義
 │   ├── utils.py           # ユーティリティ関数
+│   ├── logger.py          # ロギング設定
 │   ├── api/               # API クライアント関連
 │   │   ├── __init__.py
 │   │   └── client.py      # Bedrock Converse API 連携
 │   └── browser/           # ブラウザ操作関連
 │       ├── __init__.py
 │       ├── worker.py      # ワーカースレッド処理
-│       ├── tools.py       # ツールの高レベル API
-│       └── dom.py         # DOM パーサーとデータクラス
+│       └── tools.py       # ツールの高レベル API
+├── streamlit/             # Streamlit UI関連
+│   ├── __init__.py
+│   └── app.py             # Streamlit UIアプリケーション
 ├── js/                    # buildDomTree.js など
 │   └── buildDomTree.js
 ├── credentials/           # 認証情報ディレクトリ
 │   └── aws_credentials.json
 ├── tests/                 # テスト用スクリプト
-│   ├── test_initialize_browser.py
-│   ├── test_get_dom_info.py
-│   └── test_click_and_input.py
+│   ├── test_cli.py        # CLIモードのE2Eテスト
+│   ├── test_core.py       # コアロジックのユニットテスト
+│   └── browser_test_app.py # ブラウザ操作テスト用UI
 ├── requirements.txt       # 依存ライブラリ
 ├── README.md              # このファイル
 └── main.py                # プロジェクトのメインエントリーポイント
@@ -45,13 +47,15 @@ browser-agent/
 - Converse APIのツール呼び出し処理を改善し、`stopReason`が`end_turn`になるまでツール実行と再呼び出しを繰り返すループ処理を実装
 
 ## 使用方法
-1. 環境構築
+
+### 1. 環境構築
 ```bash
 pip install -r requirements.txt
 playwright install chromium
 ```
 
-2. credentialsディレクトリにaws_credentials.jsonを配置
+### 2. 認証情報の設定
+credentialsディレクトリにaws_credentials.jsonを配置
 ```json
 {
   "aws_access_key_id": "あなたのAWSアクセスキー",
@@ -59,20 +63,63 @@ playwright install chromium
 }
 ```
 
-3. アプリケーションの起動
+### 3. アプリケーションの実行
+
+#### CLIモード
+コマンドラインから直接ブラウザ操作を実行できます。実行中はターミナルにログが表示され、ブラウザが自動的に起動します。
+
 ```bash
-streamlit run main.py
+# 基本的な使い方
+python main.py cli "Googleで猫の画像を検索して"
+
+# モデルを指定
+python main.py cli "Amazonで商品を検索して" --model us.anthropic.claude-3-7-sonnet-20250219-v1:0
+
+# デバッグモードで実行（詳細なログを表示）
+python main.py cli "ニュースサイトを開いて最新記事を教えて" --debug
+
+# 認証情報のパスを指定
+python main.py cli "天気を調べて" --credentials /path/to/credentials.json
 ```
 
-4. ブラウザで指示を入力
+#### UIモード（Streamlit）
+Streamlitベースのインターフェースを使用して対話的にブラウザを操作できます。
+
+```bash
+# 基本的な使い方（ブラウザ自動起動）
+python main.py ui
+
+# デバッグモードで実行
+python main.py ui --debug
+```
+
+または従来の方法でも起動できます：
+```bash
+streamlit run streamlit/app.py
+```
+
+### 4. ブラウザで指示を入力
    - 例: 「Amazonで商品を検索して」
    - 例: 「ニュースサイトを開いて最新記事を教えて」
 
 ## テスト
-テスト用スクリプトは `tests/` ディレクトリに配置されています。ブラウザ初期化を確認するには以下のコマンドを実行してください：
+テスト用スクリプトは `tests/` ディレクトリに配置されています。
+
+### すべてのテストを実行
 ```bash
-cd browser-agent
-streamlit run tests/test_initialize_browser.py
+python -m unittest discover tests
+```
+
+### 特定のテストを実行
+```bash
+# コアロジックのユニットテスト
+python -m unittest tests.test_core
+
+# CLIモードのE2Eテスト
+python -m unittest tests.test_cli
+
+# ブラウザ操作テスト（Streamlit UI）
+streamlit run tests/browser_test_app.py
 ```
 
 ## 技術仕様
