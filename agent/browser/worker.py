@@ -24,7 +24,7 @@ def _browser_worker():
     add_debug_log("ワーカースレッド: Playwright 開始")
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        headless=True,
+        headless=False,
         args=[
             '--no-sandbox',
             '--disable-blink-features=AutomationControlled',  # 自動化制御を隠す
