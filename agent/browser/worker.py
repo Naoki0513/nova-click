@@ -23,13 +23,52 @@ def _browser_worker():
     """バックブラウザ操作用スレッド関数"""
     add_debug_log("ワーカースレッド: Playwright 開始")
     playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(channel='chrome', headless=False)
+    browser = playwright.chromium.launch(
+        channel='chrome', 
+        headless=False,
+        args=[
+            '--no-sandbox',
+            '--disable-blink-features=AutomationControlled',  # 自動化制御を隠す
+            '--disable-infobars',  # 「ブラウザは自動ソフトウェアによって制御されています」を非表示
+            '--disable-background-timer-throttling',  # バックグラウンドのタイマー調整を無効化
+            '--disable-popup-blocking',  # ポップアップブロックを無効化
+            '--disable-sync', # Googleアカウント同期機能を使用しない
+            '--allow-pre-commit-input',  # ページレンダリング前のJS操作を許可
+            '--disable-client-side-phishing-detection',  # クライアント側のフィッシング検出を無効化
+            '--disable-domain-reliability',  # ドメイン信頼性を無効化
+            '--disable-component-update',  # コンポーネント更新を無効化
+            '--disable-datasaver-prompt',  # データセーバープロンプトを無効化
+            '--hide-crash-restore-bubble',  # クラッシュ復元バブルを非表示
+            '--suppress-message-center-popups',  # メッセージセンターポップアップを抑制
+        ]
+    )
     # Stealth モードで自動化検出を回避するため、新しいブラウザコンテキストを作成
     context = browser.new_context()
     page = context.new_page()
     # stealth 設定をページに適用
     stealth_sync(page)
-    add_debug_log("ワーカースレッド: stealth 設定を適用しました")
+    page.add_init_script("""
+        // Permissions APIをオーバーライド
+        if (window.navigator && window.navigator.permissions) {
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' 
+                    ? Promise.resolve({ state: Notification.permission }) 
+                    : originalQuery(parameters)
+            );
+        }
+        
+        // WebDriverがundefinedであることを保証
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+        
+        // Chromeの自動化フラグを削除
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+    """)
+    add_debug_log("ワーカースレッド: stealth設定と追加のCAPTCHA回避スクリプトを適用しました")
     # 初期ページを開く
     page.goto("https://www.google.com")
     add_debug_log("ワーカースレッド: Google を開きました")
@@ -78,6 +117,37 @@ def _browser_worker():
                 except Exception as e:
                     add_debug_log(f"ワーカースレッド: input_text エラー: {e}")
                     _res_queue.put({'status': 'error', 'message': f'input_textエラー: {e}'})
+
+            elif cmd == 'execute_javascript':
+                script = params.get('script', '')
+                try:
+                    result = page.evaluate(script)
+                    add_debug_log(f"ワーカースレッド: JavaScriptを実行しました")
+                    _res_queue.put({'status': 'success', 'result': result})
+                except Exception as e:
+                    add_debug_log(f"ワーカースレッド: execute_javascript エラー: {e}")
+                    _res_queue.put({'status': 'error', 'message': f'execute_javascriptエラー: {e}'})
+                    
+            elif cmd == 'navigate':
+                url = params.get('url', '')
+                try:
+                    page.goto(url)
+                    add_debug_log(f"ワーカースレッド: {url} に移動しました")
+                    _res_queue.put({'status': 'success'})
+                except Exception as e:
+                    add_debug_log(f"ワーカースレッド: navigate エラー: {e}")
+                    _res_queue.put({'status': 'error', 'message': f'navigateエラー: {e}'})
+                    
+            elif cmd == 'screenshot':
+                try:
+                    screenshot_data = page.screenshot(type='png', full_page=True)
+                    import base64
+                    encoded = base64.b64encode(screenshot_data).decode('utf-8')
+                    add_debug_log(f"ワーカースレッド: スクリーンショットを撮影しました")
+                    _res_queue.put({'status': 'success', 'data': encoded})
+                except Exception as e:
+                    add_debug_log(f"ワーカースレッド: screenshot エラー: {e}")
+                    _res_queue.put({'status': 'error', 'message': f'screenshotエラー: {e}'})
 
             elif cmd == 'exit':
                 break
@@ -138,4 +208,4 @@ def shutdown_browser():
         except Exception as e:
             add_debug_log(f"shutdown_browser: エラー発生 {e}")
             return {'status': 'error', 'message': f'ブラウザ終了時にエラーが発生しました: {e}'}
-    return {'status': 'info', 'message': 'ブラウザワーカースレッドは起動していません'} 
+    return {'status': 'info', 'message': 'ブラウザワーカースレッドは起動していません'}      
