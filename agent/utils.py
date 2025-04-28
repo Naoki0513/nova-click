@@ -1,16 +1,10 @@
 import streamlit as st
 import os
 import json
-import random
-import string
 import datetime
 import inspect
 import traceback
-import sys # 標準エラー出力用にインポート
-
-def random_id(length=28):
-    """指定された長さのランダムな英数字IDを生成します。"""
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+import sys 
 
 def load_credentials(file_path):
     """認証情報をJSONファイルから読み込みます。"""
@@ -35,27 +29,6 @@ def load_credentials(file_path):
         add_debug_log(error_msg)
         st.error(error_msg)
         return None
-
-def ensure_alternating_roles(conversation_history):
-    """会話履歴が正しく交互のロールになっていることを確認します"""
-    if not conversation_history:
-        return conversation_history
-    
-    # 最後のメッセージのロールを確認
-    last_role = conversation_history[-1]["role"]
-    
-    # もし最後のメッセージがアシスタントのものなら、ユーザーのメッセージが必要
-    if last_role == "assistant":
-        return conversation_history
-    
-    # もし最後のメッセージがユーザーのものなら、アシスタントのメッセージが必要
-    if last_role == "user":
-        conversation_history.append({
-            "role": "assistant", 
-            "content": [{"text": ""}]
-        })
-    
-    return conversation_history
 
 def display_debug_logs():
     """デバッグログをグループ化してJSON形式で表示します。"""
@@ -216,7 +189,3 @@ def clear_conversation_history():
             print("clear_conversation_history: Not in Streamlit environment, skipping session state clear.", flush=True)
     except Exception as e:
         print(f"ERROR in clear_conversation_history: {e}\\n{traceback.format_exc()}", file=sys.stderr, flush=True)
-
-def unicode_escape_str(s):
-    """文字列内のUnicodeエスケープシーケンスを変換します。"""
-    return s.encode('unicode-escape').decode('utf-8') 

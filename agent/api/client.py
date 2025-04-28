@@ -116,22 +116,15 @@ def get_browser_tools_config():
     return [
         {
             "toolSpec": {
-                "name": "initialize_browser",
-                "description": "Playwrightを使って通常のChromeブラウザを起動します",
-                "inputSchema": { "json": { "type": "object" } }
-            }
-        },
-        {
-            "toolSpec": {
-                "name": "get_dom_info",
-                "description": "アクセシビリティツリーを基に現在のページのDOM情報を取得します",
+                "name": "get_ax_tree",
+                "description": "ページの構造理解と操作対象特定のため、操作前後に呼び出す必要があることを追記します。現在のページのアクセシビリティツリー（AX Tree）を取得します。",
                 "inputSchema": { "json": { "type": "object" } }
             }
         },
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします",
+                "description": "AX Treeから正確な role と name を特定してから使うことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -147,7 +140,7 @@ def get_browser_tools_config():
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力してEnterキーを押します",
+                "description": "AX Treeから正確な role と name を特定してから使うこと、Enterキーを押すことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力してEnterキーを押します",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -161,4 +154,4 @@ def get_browser_tools_config():
                 }
             }
         }
-    ] 
+    ]

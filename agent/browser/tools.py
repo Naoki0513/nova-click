@@ -1,66 +1,9 @@
 import queue
 import json
 from agent.utils import add_debug_log
+from queue import Queue, Empty
+from typing import Dict, Any, Optional, Tuple
 from .worker import initialize_browser, _ensure_worker_initialized, shutdown_browser, _cmd_queue, _res_queue
-
-
-def get_raw_html():
-    """バックブラウザワーカースレッドから Raw HTML を取得します"""
-    add_debug_log("tools.get_raw_html: Raw HTML取得要求送信")
-    init_status = _ensure_worker_initialized()
-    if init_status.get('status') != 'success':
-        return init_status
-
-    def _fetch_raw():
-        _cmd_queue.put({'command': 'get_raw_html'})
-        try:
-            return _res_queue.get(timeout=10)
-        except queue.Empty:
-            add_debug_log("tools.get_raw_html: Raw HTML取得タイムアウト")
-            return {'status': 'error', 'message': 'Raw HTML取得タイムアウト'}
-
-    res = _fetch_raw()
-    if res.get('status') != 'success':
-        add_debug_log("tools.get_raw_html: エラー検出、再初期化してリトライ")
-        shutdown_browser()
-        init_res = initialize_browser()
-        if init_res.get('status') != 'success':
-            return init_res
-        res = _fetch_raw()
-    return res
-
-
-def get_structured_dom(highlight_elements=False, focus_element=-1, viewport_expansion=0, debug_mode=False):
-    """バックブラウザワーカースレッドから構造化DOM情報を取得します"""
-    add_debug_log(f"tools.get_structured_dom: params={{highlight={highlight_elements}, focus={focus_element}, expansion={viewport_expansion}, debug={debug_mode}}}")
-    init_status = _ensure_worker_initialized()
-    if init_status.get('status') != 'success':
-        return init_status
-
-    params = {
-        'highlight_elements': highlight_elements,
-        'focus_element': focus_element,
-        'viewport_expansion': viewport_expansion,
-        'debug_mode': debug_mode,
-    }
-
-    def _fetch_structured():
-        _cmd_queue.put({'command': 'get_structured_dom', 'params': params})
-        try:
-            return _res_queue.get(timeout=20)
-        except queue.Empty:
-            add_debug_log("tools.get_structured_dom: タイムアウト")
-            return {'status': 'error', 'message': '構造化DOM取得タイムアウト'}
-
-    res = _fetch_structured()
-    if res.get('status') != 'success':
-        add_debug_log("tools.get_structured_dom: エラー検出、再初期化してリトライ")
-        shutdown_browser()
-        init_res = initialize_browser()
-        if init_res.get('status') != 'success':
-            return init_res
-        res = _fetch_structured()
-    return res
 
 
 def get_ax_tree():
@@ -154,15 +97,6 @@ def dispatch_browser_tool(tool_name: str, params=None):
     add_debug_log(f"tools.dispatch_browser_tool: tool={tool_name}, params={params}")
     if tool_name == 'initialize_browser':
         return initialize_browser()
-    elif tool_name == 'get_raw_html':
-        return get_raw_html()
-    elif tool_name == 'get_structured_dom':
-        return get_structured_dom(
-            highlight_elements=params.get('highlight_elements', False),
-            focus_element=params.get('focus_element', -1),
-            viewport_expansion=params.get('viewport_expansion', 0),
-            debug_mode=params.get('debug_mode', False)
-        )
     elif tool_name == 'get_ax_tree':
         return get_ax_tree()
     elif tool_name == 'click_element':

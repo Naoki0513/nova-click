@@ -5,6 +5,7 @@ import json
 from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history
 from .api import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
 from .browser import dispatch_browser_tool
+from .browser.worker import initialize_browser, shutdown_browser, _ensure_worker_initialized
 from .prompts import get_system_prompt
 from botocore.exceptions import ClientError
 from typing import Dict, Any
@@ -34,9 +35,6 @@ def initialize_session_state():
 
 def setup_page_layout():
     """ページレイアウトの設定"""
-    # ページ設定
-    st.set_page_config(page_title="ブラウザ操作エージェント", layout="wide")
-    
     # サイドバーの設定
     with st.sidebar:
         st.title("ブラウザ操作エージェント")
@@ -128,6 +126,12 @@ def display_screenshot(browser_container):
 
 def handle_user_input(user_input, bedrock_session, system_prompt=None):
     """ユーザー入力を処理します。 (Converse APIループ版)"""
+    # 最初にワーカーが初期化されているか確認・初期化
+    init_status = _ensure_worker_initialized()
+    if init_status.get('status') != 'success':
+        st.error(f"ブラウザワーカーの初期化に失敗しました: {init_status.get('message')}")
+        return
+
     if not user_input:
         return
 
@@ -252,6 +256,9 @@ def get_inference_config(model_id: str) -> Dict[str, Any]:
 
 def run_app():
     """アプリケーションを実行します"""
+    # ★最初にページ設定を呼び出す
+    st.set_page_config(page_title="ブラウザ操作エージェント", layout="wide")
+
     # セッション状態の初期化
     initialize_session_state()
     

@@ -6,7 +6,7 @@ import asyncio
 import os
 import json
 from agent.utils import add_debug_log
-from .dom import _construct_dom_tree
+from playwright.sync_api import sync_playwright
 
 # Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
@@ -18,25 +18,8 @@ _res_queue = queue.Queue()
 _thread_started = False
 _browser_thread = None
 
-# buildDomTree.js のパス
-BUILD_DOM_TREE_JS_PATH = os.path.join(os.path.dirname(__file__), 'js', 'buildDomTree.js')
-
-
 def _browser_worker():
     """バックブラウザ操作用スレッド関数"""
-    # buildDomTree.js の内容を読み込む
-    build_dom_tree_js_code = ""
-    if os.path.exists(BUILD_DOM_TREE_JS_PATH):
-        try:
-            with open(BUILD_DOM_TREE_JS_PATH, 'r', encoding='utf-8') as f:
-                build_dom_tree_js_code = f.read()
-            add_debug_log(f"ワーカースレッド: {BUILD_DOM_TREE_JS_PATH} の読み込み成功")
-        except Exception as e:
-            add_debug_log(f"ワーカースレッド: {BUILD_DOM_TREE_JS_PATH} の読み込みエラー: {e}")
-    else:
-        add_debug_log(f"ワーカースレッド: {BUILD_DOM_TREE_JS_PATH} が見つかりません。構造化DOM取得は利用できません。")
-
-    from playwright.sync_api import sync_playwright
     add_debug_log("ワーカースレッド: Playwright 開始")
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(channel='chrome', headless=False)
@@ -50,35 +33,7 @@ def _browser_worker():
             cmd = cmd_data.get('command')
             params = cmd_data.get('params', {})
 
-            if cmd == 'get_raw_html':
-                try:
-                    dom = page.content()
-                    add_debug_log("ワーカースレッド: Raw HTML取得成功")
-                    _res_queue.put({'status': 'success', 'html': dom})
-                except Exception as e:
-                    add_debug_log(f"ワーカースレッド: Raw HTML取得エラー: {e}")
-                    _res_queue.put({'status': 'error', 'message': f'Raw HTML取得エラー: {e}'})
-
-            elif cmd == 'get_structured_dom':
-                if not build_dom_tree_js_code:
-                    _res_queue.put({'status': 'error', 'message': f'構造化DOM取得に必要な {BUILD_DOM_TREE_JS_PATH} が読み込めていません。'})
-                else:
-                    try:
-                        js_args = {
-                            'doHighlightElements': params.get('highlight_elements', False),
-                            'focusHighlightIndex': params.get('focus_element', -1),
-                            'viewportExpansion': params.get('viewport_expansion', 0),
-                            'debugMode': params.get('debug_mode', False),
-                        }
-                        eval_page = page.evaluate(build_dom_tree_js_code, js_args)
-                        element_tree, selector_map = _construct_dom_tree(eval_page)
-                        add_debug_log("ワーカースレッド: 構造化DOM取得成功")
-                        _res_queue.put({'status': 'success', 'element_tree': element_tree, 'selector_map': selector_map})
-                    except Exception as e:
-                        add_debug_log(f"ワーカースレッド: 構造化DOM取得エラー: {e}")
-                        _res_queue.put({'status': 'error', 'message': f'構造化DOM取得エラー: {e}'})
-
-            elif cmd == 'get_ax_tree':
+            if cmd == 'get_ax_tree':
                 try:
                     ax_tree = page.accessibility.snapshot(root=None)
                     if ax_tree is None:
