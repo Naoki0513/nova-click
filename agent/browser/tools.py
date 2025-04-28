@@ -30,13 +30,6 @@ def get_ax_tree():
         return result
 
     res = _fetch_ax()
-    if res.get('status') != 'success':
-        add_debug_log("tools.get_ax_tree: エラー検出、再初期化してリトライ")
-        shutdown_browser()
-        init_res = initialize_browser()
-        if init_res.get('status') != 'success':
-            return init_res
-        res = _fetch_ax()
     return res
 
 
@@ -56,13 +49,6 @@ def click_element(role: str, name: str):
             return {'status': 'error', 'message': 'click_elementタイムアウト'}
 
     res = _fetch_click()
-    if res.get('status') != 'success':
-        add_debug_log("tools.click_element: エラー検出、再初期化してリトライ")
-        shutdown_browser()
-        init_res = initialize_browser()
-        if init_res.get('status') != 'success':
-            return init_res
-        res = _fetch_click()
     return res
 
 
@@ -82,13 +68,6 @@ def input_text(role: str, name: str, text: str):
             return {'status': 'error', 'message': 'input_textタイムアウト'}
 
     res = _fetch_input()
-    if res.get('status') != 'success':
-        add_debug_log("tools.input_text: エラー検出、再初期化してリトライ")
-        shutdown_browser()
-        init_res = initialize_browser()
-        if init_res.get('status') != 'success':
-            return init_res
-        res = _fetch_input()
     return res
 
 

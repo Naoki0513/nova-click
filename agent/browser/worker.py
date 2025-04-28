@@ -7,6 +7,7 @@ import os
 import json
 from agent.utils import add_debug_log
 from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 
 # Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
@@ -23,10 +24,16 @@ def _browser_worker():
     add_debug_log("ワーカースレッド: Playwright 開始")
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(channel='chrome', headless=False)
-    page = browser.new_page()
+    # Stealth モードで自動化検出を回避するため、新しいブラウザコンテキストを作成
+    context = browser.new_context()
+    page = context.new_page()
+    # stealth 設定をページに適用
+    stealth_sync(page)
+    add_debug_log("ワーカースレッド: stealth 設定を適用しました")
+    # 初期ページを開く
     page.goto("https://www.google.com")
     add_debug_log("ワーカースレッド: Google を開きました")
-    add_debug_log("ワーカースレッド: 初期化完了")
+    add_debug_log("ワーカースレッド: 初期化完了 (stealth 適用済み)")
     try:
         while True:
             cmd_data = _cmd_queue.get()
@@ -79,6 +86,12 @@ def _browser_worker():
                 add_debug_log(f"ワーカースレッド: 不明なコマンド: {cmd}")
                 _res_queue.put({'status': 'error', 'message': f'不明なコマンド: {cmd}'})
     finally:
+        # コンテキストを閉じる
+        try:
+            context.close()
+            add_debug_log("ワーカースレッド: コンテキストを閉じました")
+        except Exception:
+            pass
         browser.close()
         playwright.stop()
         add_debug_log("ワーカースレッド: 終了")

@@ -225,6 +225,13 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
                 st.write("実行結果:")
                 st.json(result)
 
+                # ツール実行結果がエラーの場合は処理を中断
+                if result.get('status') == 'error':
+                    st.error(f"ツール '{tool_name}' の実行に失敗しました: {result.get('message')}")
+                    # エラーが発生したらループを抜ける
+                    messages.append({"role": "assistant", "content": [{"text": f"エラーのため処理を中断しました: {result.get('message')}"}]})
+                    break
+
                 # toolResult をユーザーメッセージとして追加
                 tool_result_block = {
                     "toolResult": {
@@ -239,6 +246,8 @@ def handle_user_input(user_input, bedrock_session, system_prompt=None):
 
         # end_turnなどでループを抜ける
         break
+    # ループ終了後、最終的な会話履歴をセッション状態に保存
+    st.session_state["conversation_history"].extend(messages)
 
 def get_inference_config(model_id: str) -> Dict[str, Any]:
     """
