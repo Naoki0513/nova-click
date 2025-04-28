@@ -16,7 +16,7 @@ def test_user_agent():
     _cmd_queue.put({
         'command': 'execute_javascript',
         'params': {
-            'script': 'return navigator.userAgent'
+            'script': 'navigator.userAgent'
         }
     })
     
@@ -33,7 +33,7 @@ def test_webdriver_property():
     _cmd_queue.put({
         'command': 'execute_javascript',
         'params': {
-            'script': 'return navigator.webdriver === undefined'
+            'script': 'navigator.webdriver === undefined'
         }
     })
     
@@ -66,7 +66,7 @@ def test_google_access():
     _cmd_queue.put({
         'command': 'execute_javascript',
         'params': {
-            'script': 'return document.body.innerText.includes("CAPTCHA") || document.body.innerText.includes("ロボットではありません") || document.body.innerText.includes("I\'m not a robot")'
+            'script': 'document.body.innerText.includes("CAPTCHA") || document.body.innerText.includes("ロボットではありません") || document.body.innerText.includes("I\'m not a robot")'
         }
     })
     
@@ -98,7 +98,13 @@ def run_tests():
             result = test_google_access()
             st.success("テスト完了")
             if 'screenshot' in result and result['screenshot'].get('status') == 'success':
-                st.image(result['screenshot'].get('data'))
+                import base64
+                from io import BytesIO
+                from PIL import Image
+                
+                image_data = base64.b64decode(result['screenshot'].get('data'))
+                image = Image.open(BytesIO(image_data))
+                st.image(image)
             st.write(f"CAPTCHA検出: {result.get('has_captcha', {}).get('result', 'unknown')}")
     
     display_debug_logs()

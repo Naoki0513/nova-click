@@ -24,8 +24,7 @@ def _browser_worker():
     add_debug_log("ワーカースレッド: Playwright 開始")
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        channel='chrome', 
-        headless=False,
+        headless=True,
         args=[
             '--no-sandbox',
             '--disable-blink-features=AutomationControlled',  # 自動化制御を隠す
@@ -208,4 +207,4 @@ def shutdown_browser():
         except Exception as e:
             add_debug_log(f"shutdown_browser: エラー発生 {e}")
             return {'status': 'error', 'message': f'ブラウザ終了時にエラーが発生しました: {e}'}
-    return {'status': 'info', 'message': 'ブラウザワーカースレッドは起動していません'}      
+    return {'status': 'info', 'message': 'ブラウザワーカースレッドは起動していません'}          

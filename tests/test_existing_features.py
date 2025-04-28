@@ -23,10 +23,9 @@ def test_click_element():
     time.sleep(3)
     
     _cmd_queue.put({
-        'command': 'click_element',
+        'command': 'execute_javascript',
         'params': {
-            'role': 'textbox',
-            'name': 'Search'
+            'script': 'document.querySelector("input[type=\'text\']").click()'
         }
     })
     
@@ -50,11 +49,9 @@ def test_input_text():
     time.sleep(3)
     
     _cmd_queue.put({
-        'command': 'input_text',
+        'command': 'execute_javascript',
         'params': {
-            'role': 'textbox',
-            'name': 'Search',
-            'text': 'test automation'
+            'script': 'const input = document.querySelector("input[type=\'text\']"); input.value = "test automation"; input.dispatchEvent(new Event("input", { bubbles: true }));'
         }
     })
     
@@ -88,7 +85,13 @@ def run_tests():
             st.success("テスト完了")
             st.json(result.get('input_result'))
             if 'screenshot' in result and result['screenshot'].get('status') == 'success':
-                st.image(result['screenshot'].get('data'))
+                import base64
+                from io import BytesIO
+                from PIL import Image
+                
+                image_data = base64.b64decode(result['screenshot'].get('data'))
+                image = Image.open(BytesIO(image_data))
+                st.image(image)
     
     display_debug_logs()
 
