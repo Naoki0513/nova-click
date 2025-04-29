@@ -9,13 +9,6 @@ from typing import Dict, Any, Optional, Union, List
 
 logger = logging.getLogger(__name__)
 
-# Streamlit のインポートと関連変数を削除
-# try:
-#     import streamlit as st
-#     STREAMLIT_AVAILABLE = True
-# except ImportError:
-#     STREAMLIT_AVAILABLE = False
-
 def setup_logging(debug: bool = False) -> None:
     """
     アプリケーション全体のロギング設定を行います。
@@ -69,14 +62,7 @@ def load_credentials(file_path):
         error_msg = f"認証情報の読み込みに失敗しました: {e}"
         # ERRORレベルでログ出力 (add_debug_log を使わないように変更)
         logger.error(error_msg)
-        # Streamlit のエラー表示を削除
-        # if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-        #     st.error(error_msg)
         return None
-
-# Streamlit UI 専用の display_debug_logs 関数を削除
-# def display_debug_logs():
-#     ... (関数全体を削除) ...
 
 def add_debug_log(msg, group=None, level: str = "DEBUG"):
     """
@@ -87,9 +73,6 @@ def add_debug_log(msg, group=None, level: str = "DEBUG"):
         group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
         level: ログレベル ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
     """
-    # Streamlit 関連のチェックと処理を削除
-    # streamlit_active = False
-    # ... (streamlit_active のチェックと関連処理を削除) ...
 
     # 呼び出し元の関数名を取得
     if group is None:
@@ -136,10 +119,6 @@ def add_debug_log(msg, group=None, level: str = "DEBUG"):
     else:
         logger.log(log_level_int, log_output) # 未知のレベルはlogメソッドで処理
 
-    # Streamlit へのログエントリ返却を削除
-    # return log_entry
-
-
 def extract_text_from_assistant_message(message):
     """アシスタントメッセージからテキスト部分を抽出します。"""
     if not message:
@@ -167,16 +146,3 @@ def extract_text_from_assistant_message(message):
             text_parts.append(message.get("content"))
 
     return "\n".join(text_parts)
-
-def clear_conversation_history():
-    """会話履歴をクリアします (CLI モードでは何もしません)。"""
-    # Streamlit 関連の処理を削除
-    # try:
-    #     if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-    #         st.session_state["conversation_history"] = []
-    #         add_debug_log("会話履歴をクリアしました", level="INFO") # Streamlit依存
-    #     else:
-    #         logger.info("Streamlit環境ではないため、会話履歴のクリアをスキップします")
-    # except Exception as e:
-    #     logger.error(f"会話履歴のクリア中にエラーが発生しました: {e}\n{traceback.format_exc()}")
-    logger.info("CLIモードでは会話履歴のクリアはサポートされていません (何もしません)") # ログだけ残す
