@@ -3,7 +3,7 @@ import json
 from agent.utils import add_debug_log
 from queue import Queue, Empty
 from typing import Dict, Any, Optional, Tuple
-from .worker import initialize_browser, _ensure_worker_initialized, shutdown_browser, _cmd_queue, _res_queue
+from .worker import initialize_browser, _ensure_worker_initialized, _cmd_queue, _res_queue
 
 
 def get_ax_tree():

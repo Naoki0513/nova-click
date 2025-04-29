@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Union, Tuple
 from .utils import add_debug_log, load_credentials
-from .browser.worker import initialize_browser, shutdown_browser, _ensure_worker_initialized
+from .browser.worker import initialize_browser, _ensure_worker_initialized
 from .browser import dispatch_browser_tool
 from .prompts import get_system_prompt
 

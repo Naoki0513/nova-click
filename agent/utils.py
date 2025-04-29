@@ -16,6 +16,36 @@ try:
 except ImportError:
     STREAMLIT_AVAILABLE = False
 
+def setup_logging(debug: bool = False) -> None:
+    """
+    アプリケーション全体のロギング設定を行います。
+
+    引数:
+        debug: デバッグモードを有効にするかどうか。Trueの場合、ログレベルはDEBUGに設定されます。
+    """
+    root_logger = logging.getLogger()
+
+    # 既存のハンドラをすべて削除（設定の重複を防ぐため）
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    log_level = logging.DEBUG if debug else logging.INFO
+    root_logger.setLevel(log_level)
+
+    # コンソールハンドラを作成・設定
+    console_handler = logging.StreamHandler(sys.stdout) # 標準出力へ
+    console_handler.setLevel(log_level)
+
+    # フォーマッタを設定
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    console_handler.setFormatter(formatter)
+
+    # ハンドラをルートロガーに追加
+    root_logger.addHandler(console_handler)
+
+    # 設定完了をINFOレベルでログ出力（ただしハンドラ追加後）
+    root_logger.info(f"ログレベルを{logging.getLevelName(log_level)}に設定しました")
+
 def load_credentials(file_path):
     """認証情報をJSONファイルから読み込みます。"""
     try:

@@ -2,8 +2,8 @@ import streamlit as st
 import boto3
 import base64
 import json
-from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history
-from .api import call_bedrock_converse_api, display_assistant_message, get_browser_tools_config
+from .utils import add_debug_log, display_debug_logs, extract_text_from_assistant_message, clear_conversation_history, setup_logging
+from .core import get_browser_tools_config
 from .browser import dispatch_browser_tool
 from .browser.worker import initialize_browser, shutdown_browser, _ensure_worker_initialized
 from .prompts import get_system_prompt
@@ -261,78 +261,3 @@ def get_inference_config(model_id: str) -> Dict[str, Any]:
     elif "anthropic.claude" in model_id:   # Claude 系（必要なら）
         cfg.update({"temperature": 0})   # 例
     return cfg
-
-
-def run_app():
-    """アプリケーションを実行します"""
-    # ★最初にページ設定を呼び出す
-    st.set_page_config(page_title="ブラウザ操作エージェント", layout="wide")
-
-    # セッション状態の初期化
-    initialize_session_state()
-    
-    # ページレイアウトの設定
-    main_container, token_usage_container, conversation_container, user_input_container, browser_container, debug_container = setup_page_layout()
-    
-    # トークン使用量の表示
-    display_token_usage(token_usage_container)
-    
-    # メインコンテナにタイトルを表示
-    with main_container:
-        st.header("ブラウザを通じてWebを操作できます")
-        st.markdown("指示を入力してください。例: 「Amazonで商品を検索して」「Googleマップで最寄りの駅を表示して」")
-    
-    # 会話履歴の表示
-    display_conversation_history(conversation_container)
-    
-    # スクリーンショットの表示
-    display_screenshot(browser_container)
-    
-    # 認証情報の読み込み
-    try:
-        credentials_path = "credentials/aws_credentials.json"
-        from .utils import load_credentials
-        credentials = load_credentials(credentials_path)
-        if credentials:
-            st.session_state["credentials"] = credentials
-            add_debug_log("認証情報を自動読み込みしました")
-        else:
-            st.error("認証情報の読み込みに失敗しました。credentials/aws_credentials.json を確認してください。")
-    except Exception as e:
-        st.error(f"認証情報読み込みエラー: {str(e)}")
-    
-    # リージョン (非表示)
-    region = "us-west-2"
-    
-    # 入力フォーム - テキスト入力
-    with user_input_container:
-        user_input = st.text_input("ブラウザへの指示を入力してください")
-        if user_input:
-            if "credentials" in st.session_state:
-                try:
-                    # ユーザー入力を表示
-                    with st.chat_message("user"):
-                        st.markdown(user_input)
-
-                    # Bedrock セッションの作成
-                    bedrock_runtime = boto3.client(
-                        service_name="bedrock-runtime",
-                        region_name=region,
-                        aws_access_key_id=st.session_state["credentials"].get("aws_access_key_id"),
-                        aws_secret_access_key=st.session_state["credentials"].get("aws_secret_access_key")
-                    )
-
-                    # ユーザー入力を処理
-                    with st.chat_message("assistant"):
-                        handle_user_input(
-                            user_input,
-                            bedrock_runtime,
-                            get_system_prompt()
-                        )
-                except Exception as e:
-                    st.error(f"エラーが発生しました: {str(e)}")
-            else:
-                st.error("認証情報を読み込めませんでした。credentials/aws_credentials.json を確認してください。")
-    
-    # デバッグログを表示
-    display_debug_logs() 

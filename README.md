@@ -12,20 +12,12 @@ browser-agent/
 │   ├── __init__.py        # パッケージ初期化
 │   ├── core.py            # コアロジック（UI非依存）
 │   ├── prompts.py         # プロンプト定義
-│   ├── utils.py           # ユーティリティ関数
-│   ├── logger.py          # ロギング設定
-│   ├── api/               # API クライアント関連
-│   │   ├── __init__.py
-│   │   └── client.py      # Bedrock Converse API 連携
+│   ├── utils.py           # ユーティリティ関数 (ロギング設定含む)
+│   ├── app.py             # Streamlit UI アプリケーション
 │   └── browser/           # ブラウザ操作関連
 │       ├── __init__.py
 │       ├── worker.py      # ワーカースレッド処理
 │       └── tools.py       # ツールの高レベル API
-├── streamlit/             # Streamlit UI関連
-│   ├── __init__.py
-│   └── app.py             # Streamlit UIアプリケーション
-├── js/                    # buildDomTree.js など
-│   └── buildDomTree.js
 ├── credentials/           # 認証情報ディレクトリ
 │   └── aws_credentials.json
 ├── tests/                 # テスト用スクリプト
@@ -87,15 +79,10 @@ Streamlitベースのインターフェースを使用して対話的にブラ�
 
 ```bash
 # 基本的な使い方（ブラウザ自動起動）
-python main.py ui
+streamlit run agent/app.py
 
 # デバッグモードで実行
-python main.py ui --debug
-```
-
-または従来の方法でも起動できます：
-```bash
-streamlit run streamlit/app.py
+streamlit run agent/app.py -- --debug
 ```
 
 ### 4. ブラウザで指示を入力
@@ -206,7 +193,7 @@ streamlit run tests/browser_test_app.py
 
 ```
 cd browser-agent
-streamlit run agent/agent.py
+streamlit run agent/app.py
 ```
 
 ## ブラウザサービスの設定

@@ -7,20 +7,10 @@ import boto3
 from typing import Dict, Any, Optional
 
 from agent.core import initialize_agent, get_system_prompt, handle_user_query
+from agent.utils import setup_logging
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
-
-def setup_logging(debug: bool = False) -> None:
-    """ロギングの設定"""
-    log_level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[logging.StreamHandler()]
-    )
-    logger.setLevel(log_level)
-    logger.info(f"ログレベルを{logging.getLevelName(log_level)}に設定しました")
 
 # CLIモードの実行関数 (引数なし)
 def run_cli_mode() -> int:
@@ -30,10 +20,10 @@ def run_cli_mode() -> int:
     query = "東京の現在の天気を教えてください。" # 固定のクエリ
     model_id = "us.amazon.nova-pro-v1:0"
     credentials_path = "credentials/aws_credentials.json"
-    debug = False # デバッグモードを無効にする場合は False
+    debug = True # デバッグモードを無効にする場合は False
     # ------------------------------------ +
 
-    setup_logging(debug) # ロギング設定
+    setup_logging(debug) # agent.utils からインポートした関数を呼び出す
     logger.info(f"CLIモードで実行します - モデル: {model_id}") # 実行情報ログ
     
     # エージェントを初期化
