@@ -9,12 +9,12 @@ from typing import Dict, Any, Optional, Union, List
 
 logger = logging.getLogger(__name__)
 
-# Streamlitのインポートを条件付きで行う
-try:
-    import streamlit as st
-    STREAMLIT_AVAILABLE = True
-except ImportError:
-    STREAMLIT_AVAILABLE = False
+# Streamlit のインポートと関連変数を削除
+# try:
+#     import streamlit as st
+#     STREAMLIT_AVAILABLE = True
+# except ImportError:
+#     STREAMLIT_AVAILABLE = False
 
 def setup_logging(debug: bool = False) -> None:
     """
@@ -58,62 +58,38 @@ def load_credentials(file_path):
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_dir)  # agent ディレクトリの親 = プロジェクトルート
             full_path = os.path.join(project_root, file_path)
-            
-        add_debug_log(f"認証情報を読み込み中: {full_path}", level="INFO")
+
+        # INFOレベルでログ出力 (add_debug_log を使わないように変更)
+        logger.info(f"認証情報を読み込み中: {full_path}")
         with open(full_path, 'r') as f:
             credentials = json.load(f)
-            add_debug_log("認証情報を読み込みました", level="INFO")
+            logger.info("認証情報を読み込みました")
             return credentials
     except Exception as e:
         error_msg = f"認証情報の読み込みに失敗しました: {e}"
-        add_debug_log(error_msg, level="ERROR")
-        
-        # Streamlit環境の場合のみエラー表示
-        if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-            st.error(error_msg)
-            
+        # ERRORレベルでログ出力 (add_debug_log を使わないように変更)
+        logger.error(error_msg)
+        # Streamlit のエラー表示を削除
+        # if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+        #     st.error(error_msg)
         return None
 
-def display_debug_logs():
-    """デバッグログをグループ化してJSON形式で表示します。"""
-    if not STREAMLIT_AVAILABLE:
-        logger.warning("Streamlitが利用できないため、display_debug_logs()は何も表示しません")
-        return
-    
-    if "log_placeholder" in st.session_state:
-        # プレースホルダを使って表示
-        with st.session_state["log_placeholder"].container():
-            st.header("デバッグログ")
-            if "debug_logs" in st.session_state:
-                logs = st.session_state["debug_logs"]
-                
-                # グループごとにログを表示
-                for group, entries in logs.items():
-                    # 各グループのエントリ数を見出しで表示
-                    st.subheader(f"🔍 {group} ({len(entries)}件)")
-                    # ログエントリをJSON形式で表示
-                    st.json(entries, expanded=False)
+# Streamlit UI 専用の display_debug_logs 関数を削除
+# def display_debug_logs():
+#     ... (関数全体を削除) ...
 
 def add_debug_log(msg, group=None, level: str = "DEBUG"):
     """
-    デバッグログメッセージを処理します。
-    Streamlit 環境ではセッション状態に追加し、それ以外ではロガーを使用します。
+    デバッグログメッセージを標準ロガーを使用して記録します。
 
     引数:
         msg: ログメッセージ (文字列、辞書、リスト、例外)
         group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
         level: ログレベル ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
     """
-    # Streamlit セッション状態が利用可能かチェック
-    streamlit_active = False
-    if STREAMLIT_AVAILABLE:
-        try:
-            # st.session_state 自体が存在し、かつ"log_placeholder"キーが存在するか
-            if hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-                 streamlit_active = True
-        except Exception:
-             # st.session_state へのアクセスで予期せぬエラーが発生した場合も非アクティブ扱い
-             streamlit_active = False
+    # Streamlit 関連のチェックと処理を削除
+    # streamlit_active = False
+    # ... (streamlit_active のチェックと関連処理を削除) ...
 
     # 呼び出し元の関数名を取得
     if group is None:
@@ -127,105 +103,55 @@ def add_debug_log(msg, group=None, level: str = "DEBUG"):
         except (AttributeError, ValueError):
             group = "Unknown"
         finally:
-            del frame
+            del frame # 重要: フレームオブジェクトの参照を削除
 
-    # タイムスタンプを取得
-    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-
-    # --- メッセージのフォーマット (共通処理) ---
-    log_entry_message_for_streamlit = None # Streamlit用
-    log_entry_message_for_logger = None    # ロガー用
+    # --- メッセージのフォーマット ---
+    log_entry_message_for_logger = None
 
     if isinstance(msg, (dict, list)):
-        log_entry_message_for_streamlit = msg # Streamlitは元の形式を保持
         try:
-            # ロガー用はJSON文字列化を試みる
             log_entry_message_for_logger = json.dumps(msg, ensure_ascii=False, indent=2)
         except TypeError:
             log_entry_message_for_logger = str(msg)
     elif isinstance(msg, Exception):
-        traceback_str = f"Error: {str(msg)}\n{traceback.format_exc()}"
-        log_entry_message_for_logger = traceback_str
-        log_entry_message_for_streamlit = { # Streamlit用は構造化
-            "error": str(msg),
-            "traceback": traceback.format_exc()
-        }
+        log_entry_message_for_logger = f"Error: {str(msg)}\n{traceback.format_exc()}"
     else:
-        # 文字列の場合は両方同じ
         log_entry_message_for_logger = str(msg)
-        log_entry_message_for_streamlit = str(msg)
 
-    # 返却用のログエントリ (Streamlit形式を基本とする)
-    log_entry = {
-        "timestamp": now,
-        "message": log_entry_message_for_streamlit,
-        "level": level
-    }
-
-    if streamlit_active:
-        # --- Streamlit 環境での処理 ---
-        try:
-            # デバッグログ辞書がなければ初期化
-            if "debug_logs" not in st.session_state:
-                st.session_state["debug_logs"] = {}
-
-            # グループリストがなければ初期化
-            if group not in st.session_state["debug_logs"]:
-                st.session_state["debug_logs"][group] = []
-
-            # ログを追加
-            st.session_state["debug_logs"][group].append(log_entry)
-
-            # 画面上のプレースホルダにリアルタイム表示
-            placeholder = st.session_state.get("log_placeholder")
-            if placeholder:
-                 # 表示用のメッセージ整形
-                 display_msg = ""
-                 if isinstance(log_entry["message"], (dict, list)):
-                     try:
-                         # 辞書/リストはJSON文字列として表示
-                         display_msg = json.dumps(log_entry["message"], ensure_ascii=False)
-                     except TypeError:
-                         display_msg = str(log_entry["message"]) # JSON化できなければ文字列
-                 else:
-                     display_msg = str(log_entry["message"])
-
-                 # プレースホルダーに追記
-                 with placeholder.container(): # container() を使って追記エリアを確保
-                      st.text(f"{now} [{level}] [{group}] {display_msg}")
-
-        except Exception as e:
-             # Streamlit 関連のエラーが発生した場合、標準エラーに出力
-             print(f"ERROR in add_debug_log (Streamlit Active): {e}\n{traceback.format_exc()}", file=sys.stderr, flush=True)
-
+    # --- 標準ロガーへの出力 ---
     log_output = f"[{group}] {log_entry_message_for_logger}"
-    
-    if level == "DEBUG":
+
+    log_level_int = getattr(logging, level.upper(), logging.DEBUG) # 文字列から数値レベルに変換
+
+    if log_level_int == logging.DEBUG:
         logger.debug(log_output)
-    elif level == "INFO":
+    elif log_level_int == logging.INFO:
         logger.info(log_output)
-    elif level == "WARNING":
+    elif log_level_int == logging.WARNING:
         logger.warning(log_output)
-    elif level == "ERROR":
+    elif log_level_int == logging.ERROR:
         logger.error(log_output)
-    elif level == "CRITICAL":
+    elif log_level_int == logging.CRITICAL:
         logger.critical(log_output)
     else:
-        logger.debug(log_output)
+        logger.log(log_level_int, log_output) # 未知のレベルはlogメソッドで処理
 
-    return log_entry # どちらのケースでもログエントリを返す
+    # Streamlit へのログエントリ返却を削除
+    # return log_entry
+
 
 def extract_text_from_assistant_message(message):
     """アシスタントメッセージからテキスト部分を抽出します。"""
     if not message:
         return ""
-    
+
     text_parts = []
-    
+
     # contentがリストの場合
     if isinstance(message.get("content"), list):
         for content in message.get("content", []):
-            if content.get("type") == "text":
+            # "type" キーが存在しない、または "text" の場合
+            if content.get("type", "text") == "text":
                 text = content.get("text", "")
                 if text.strip():  # 空でない場合のみ追加
                     text_parts.append(text)
@@ -239,17 +165,18 @@ def extract_text_from_assistant_message(message):
     elif isinstance(message.get("content"), str):
         if message.get("content").strip():
             text_parts.append(message.get("content"))
-    
+
     return "\n".join(text_parts)
 
 def clear_conversation_history():
-    """会話履歴をクリアします。"""
-    # Streamlit 環境でのみ st.session_state を操作
-    try:
-        if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
-            st.session_state["conversation_history"] = []
-            add_debug_log("会話履歴をクリアしました", level="INFO") # この呼び出しも環境に応じて処理される
-        else:
-            logger.info("Streamlit環境ではないため、会話履歴のクリアをスキップします")
-    except Exception as e:
-        logger.error(f"会話履歴のクリア中にエラーが発生しました: {e}\n{traceback.format_exc()}")
+    """会話履歴をクリアします (CLI モードでは何もしません)。"""
+    # Streamlit 関連の処理を削除
+    # try:
+    #     if STREAMLIT_AVAILABLE and hasattr(st, 'session_state') and "log_placeholder" in st.session_state:
+    #         st.session_state["conversation_history"] = []
+    #         add_debug_log("会話履歴をクリアしました", level="INFO") # Streamlit依存
+    #     else:
+    #         logger.info("Streamlit環境ではないため、会話履歴のクリアをスキップします")
+    # except Exception as e:
+    #     logger.error(f"会話履歴のクリア中にエラーが発生しました: {e}\n{traceback.format_exc()}")
+    logger.info("CLIモードでは会話履歴のクリアはサポートされていません (何もしません)") # ログだけ残す

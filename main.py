@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 # CLIモードの実行関数 (引数なし)
 def run_cli_mode() -> int:
-    """CLIモードで実行"""
 
     # --- ここで実行パラメータを設定 --- +
     query = "東京の現在の天気を教えてください。" # 固定のクエリ
