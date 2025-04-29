@@ -1,17 +1,12 @@
 """
 ブラウザ操作エージェントのメインエントリーポイント
 """
-import argparse
 import logging
 import sys
-import webbrowser
 import boto3
-import time
-import threading
 from typing import Dict, Any, Optional
 
 from agent.core import initialize_agent, get_system_prompt, handle_user_query
-from streamlit.app import run_streamlit_app
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -27,21 +22,19 @@ def setup_logging(debug: bool = False) -> None:
     logger.setLevel(log_level)
     logger.info(f"ログレベルを{logging.getLevelName(log_level)}に設定しました")
 
-def launch_browser_in_background(url: str, delay: int = 2) -> None:
-    """バックグラウンドでブラウザを起動する"""
-    def _launch():
-        time.sleep(delay)  # 少し待ってからブラウザを起動
-        webbrowser.open(url)
-        logger.info(f"ブラウザを起動しました: {url}")
-    
-    thread = threading.Thread(target=_launch)
-    thread.daemon = True
-    thread.start()
-
-def run_cli_mode(query: str, model_id: str, credentials_path: str, debug: bool) -> int:
+# CLIモードの実行関数 (引数なし)
+def run_cli_mode() -> int:
     """CLIモードで実行"""
-    setup_logging(debug)
-    logger.info(f"CLIモードで実行します - モデル: {model_id}")
+
+    # --- ここで実行パラメータを設定 --- +
+    query = "東京の現在の天気を教えてください。" # 固定のクエリ
+    model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    credentials_path = "credentials/aws_credentials.json"
+    debug = False # デバッグモードを無効にする場合は False
+    # ------------------------------------ +
+
+    setup_logging(debug) # ロギング設定
+    logger.info(f"CLIモードで実行します - モデル: {model_id}") # 実行情報ログ
     
     # エージェントを初期化
     init_result = initialize_agent(credentials_path)
@@ -86,55 +79,11 @@ def run_cli_mode(query: str, model_id: str, credentials_path: str, debug: bool) 
     
     return 0
 
-def run_ui_mode(debug: bool) -> int:
-    """UIモードで実行"""
-    setup_logging(debug)
-    logger.info("UIモードで実行します")
-    
-    # ブラウザを自動起動
-    launch_browser_in_background("http://localhost:8501")
-    
-    # Streamlitアプリを実行
-    try:
-        run_streamlit_app()
-        return 0
-    except Exception as e:
-        logger.error(f"UIモード実行中にエラーが発生しました: {e}")
-        return 1
-
 def main() -> int:
     """メインエントリーポイント"""
-    parser = argparse.ArgumentParser(description="ブラウザ操作エージェント")
-    
-    # サブコマンドの設定
-    subparsers = parser.add_subparsers(dest="command", help="実行モード")
-    
-    # CLIモード用のパーサー
-    cli_parser = subparsers.add_parser("cli", help="CLIモードで実行")
-    cli_parser.add_argument("query", help="実行するクエリ/質問")
-    cli_parser.add_argument("--model", "-m", default="us.anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                          help="使用するモデルID")
-    cli_parser.add_argument("--credentials", "-c", default="credentials/aws_credentials.json",
-                          help="AWS認証情報のパス")
-    cli_parser.add_argument("--debug", "-d", action="store_true", help="デバッグモードを有効化")
-    
-    # UIモード用のパーサー
-    ui_parser = subparsers.add_parser("ui", help="UIモード（Streamlit）で実行")
-    ui_parser.add_argument("--debug", "-d", action="store_true", help="デバッグモードを有効化")
-    
-    # 引数をパース
-    args = parser.parse_args()
-    
-    # コマンドに応じて処理を分岐
-    if args.command == "cli":
-        return run_cli_mode(args.query, args.model, args.credentials, args.debug)
-    elif args.command == "ui":
-        return run_ui_mode(args.debug)
-    else:
-        # デフォルトはUIモード
-        parser.print_help()
-        print("\nコマンドが指定されていません。デフォルトでUIモードを実行します。")
-        return run_ui_mode(False)
+
+    # 引数なしでCLIモードを実行
+    return run_cli_mode()
 
 if __name__ == "__main__":
     sys.exit(main())

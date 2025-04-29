@@ -109,70 +109,66 @@ def display_screenshot(browser_container):
         if "screenshot_data" in st.session_state:
             st.image(st.session_state["screenshot_data"])
 
-def run_streamlit_app():
-    """Streamlitアプリケーションを実行します"""
-    st.set_page_config(page_title="ブラウザ操作エージェント", layout="wide")
+# Streamlitアプリケーションのメイン実行部分
+st.set_page_config(page_title="ブラウザ操作エージェント", layout="wide")
 
-    initialize_session_state()
-    
-    main_container, token_usage_container, conversation_container, user_input_container, browser_container, debug_container = setup_page_layout()
-    
-    display_token_usage(token_usage_container)
-    
-    with main_container:
-        st.header("ブラウザを通じてWebを操作できます")
-        st.markdown("指示を入力してください。例: 「Amazonで商品を検索して」「Googleマップで最寄りの駅を表示して」")
-    
-    display_conversation_history(conversation_container)
-    
-    display_screenshot(browser_container)
-    
-    try:
-        credentials_path = "credentials/aws_credentials.json"
-        from agent.utils import load_credentials
-        credentials = load_credentials(credentials_path)
-        if credentials:
-            st.session_state["credentials"] = credentials
-            add_debug_log("認証情報を自動読み込みしました")
-        else:
-            st.error("認証情報の読み込みに失敗しました。credentials/aws_credentials.json を確認してください。")
-    except Exception as e:
-        st.error(f"認証情報読み込みエラー: {str(e)}")
-    
-    region = "us-west-2"
-    
-    with user_input_container:
-        user_input = st.text_input("ブラウザへの指示を入力してください")
-        if user_input:
-            if "credentials" in st.session_state:
-                try:
-                    with st.chat_message("user"):
-                        st.markdown(user_input)
+initialize_session_state()
 
-                    bedrock_runtime = boto3.client(
-                        service_name="bedrock-runtime",
-                        region_name=region,
-                        aws_access_key_id=st.session_state["credentials"].get("aws_access_key_id"),
-                        aws_secret_access_key=st.session_state["credentials"].get("aws_secret_access_key")
+main_container, token_usage_container, conversation_container, user_input_container, browser_container, debug_container = setup_page_layout()
+
+display_token_usage(token_usage_container)
+
+with main_container:
+    st.header("ブラウザを通じてWebを操作できます")
+    st.markdown("指示を入力してください。例: 「Amazonで商品を検索して」「Googleマップで最寄りの駅を表示して」")
+
+display_conversation_history(conversation_container)
+
+display_screenshot(browser_container)
+
+try:
+    credentials_path = "credentials/aws_credentials.json"
+    from agent.utils import load_credentials
+    credentials = load_credentials(credentials_path)
+    if credentials:
+        st.session_state["credentials"] = credentials
+        add_debug_log("認証情報を自動読み込みしました")
+    else:
+        st.error("認証情報の読み込みに失敗しました。credentials/aws_credentials.json を確認してください。")
+except Exception as e:
+    st.error(f"認証情報読み込みエラー: {str(e)}")
+
+region = "us-west-2"
+
+with user_input_container:
+    user_input = st.text_input("ブラウザへの指示を入力してください")
+    if user_input:
+        if "credentials" in st.session_state:
+            try:
+                with st.chat_message("user"):
+                    st.markdown(user_input)
+
+                bedrock_runtime = boto3.client(
+                    service_name="bedrock-runtime",
+                    region_name=region,
+                    aws_access_key_id=st.session_state["credentials"].get("aws_access_key_id"),
+                    aws_secret_access_key=st.session_state["credentials"].get("aws_secret_access_key")
+                )
+
+                with st.chat_message("assistant"):
+                    result = handle_user_query(
+                        user_input,
+                        bedrock_runtime,
+                        get_system_prompt(),
+                        st.session_state["model_id"],
+                        st.session_state
                     )
+                    
+                    if "messages" in result:
+                        st.session_state["conversation_history"].extend(result["messages"])
+            except Exception as e:
+                st.error(f"エラーが発生しました: {str(e)}")
+        else:
+            st.error("認証情報を読み込めませんでした。credentials/aws_credentials.json を確認してください。")
 
-                    with st.chat_message("assistant"):
-                        result = handle_user_query(
-                            user_input,
-                            bedrock_runtime,
-                            get_system_prompt(),
-                            st.session_state["model_id"],
-                            st.session_state
-                        )
-                        
-                        if "messages" in result:
-                            st.session_state["conversation_history"].extend(result["messages"])
-                except Exception as e:
-                    st.error(f"エラーが発生しました: {str(e)}")
-            else:
-                st.error("認証情報を読み込めませんでした。credentials/aws_credentials.json を確認してください。")
-    
-    display_debug_logs() 
-
-if __name__ == "__main__":
-    run_streamlit_app()
+display_debug_logs()

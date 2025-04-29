@@ -93,7 +93,7 @@ def call_bedrock_converse_api(
         return {"error": str(e)}, token_usage or {}
 
 
-def format_assistant_message(message_content: List[Dict[str, Any]]) -> str:
+def display_assistant_message(message_content: List[Dict[str, Any]]) -> str:
     """アシスタントメッセージをフォーマットして返します。"""
     if not message_content:
         return "アシスタントからの返答を待っています..."
