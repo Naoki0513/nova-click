@@ -1,23 +1,26 @@
-import streamlit as st
 import json
 import time
-from typing import List, Dict, Any, Tuple, Union
+import logging
+from typing import List, Dict, Any, Tuple, Union, Optional
 from agent.utils import add_debug_log
+
+logger = logging.getLogger(__name__)
 
 
 def call_bedrock_converse_api(
     user_message: Union[str, List, Dict],
     conversation_history: List,
     bedrock_session,
-    system_prompt: str = None,
-    toolConfig: Dict = None,
-    modelId: str = None
+    system_prompt: Optional[str] = None,
+    toolConfig: Optional[Dict] = None,
+    modelId: Optional[str] = None,
+    token_usage: Optional[Dict] = None
 ) -> Tuple[Dict, Dict]:
     """
     Amazon Bedrock Converse APIを呼び出します。
     """
     add_debug_log("Bedrock Converse API呼び出し開始")
-    request_params = {"modelId": modelId}
+    request_params = {"modelId": modelId} if modelId else {}
 
     # メッセージの整形
     messages = []
@@ -69,46 +72,50 @@ def call_bedrock_converse_api(
         response_body = response
 
         # トークン使用量更新
-        usage = response_body.get("usage", {})
-        if "token_usage" not in st.session_state:
-            st.session_state["token_usage"] = {
+        if token_usage is None:
+            token_usage = {
                 "inputTokens": 0,
                 "outputTokens": 0,
                 "totalTokens": 0,
                 "cacheReadInputTokens": 0,
                 "cacheWriteInputTokens": 0
             }
-        st.session_state["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
-        st.session_state["token_usage"]["outputTokens"] += usage.get("outputTokens", 0)
-        st.session_state["token_usage"]["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
+        
+        usage = response_body.get("usage", {})
+        token_usage["inputTokens"] += usage.get("inputTokens", 0)
+        token_usage["outputTokens"] += usage.get("outputTokens", 0)
+        token_usage["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
 
         add_debug_log(response_body)
-        return response_body, st.session_state["token_usage"]
+        return response_body, token_usage
     except Exception as e:
         add_debug_log(f"API呼び出しエラー: {str(e)}")
-        return {"error": str(e)}, st.session_state.get("token_usage", {})
+        return {"error": str(e)}, token_usage or {}
 
 
-def display_assistant_message(message_content: List[Dict[str, Any]]):
-    """アシスタントメッセージを表示します。"""
+def display_assistant_message(message_content: List[Dict[str, Any]]) -> str:
+    """アシスタントメッセージをフォーマットして返します。"""
     if not message_content:
-        st.info("アシスタントからの返答を待っています...")
-        return
+        return "アシスタントからの返答を待っています..."
+    
+    formatted_output = []
     for content in message_content:
         content_type = content.get("type")
         if content_type == "text" or (content_type is None and "text" in content):
             text = content.get("text", "")
             if text.strip():
-                st.markdown(text)
+                formatted_output.append(text)
         elif content.get("type") == "tool_use":
             tool_name = content.get("name", "")
-            st.info(f"ツール実行: {tool_name}")
+            formatted_output.append(f"ツール実行: {tool_name}")
         elif content.get("type") == "tool_result":
             result = content.get("result", {})
             if isinstance(result, str):
-                st.code(result, language="text")
+                formatted_output.append(f"結果:\n{result}")
             else:
-                st.code(json.dumps(result, indent=2, ensure_ascii=False), language="json")
+                formatted_output.append(f"結果:\n{json.dumps(result, indent=2, ensure_ascii=False)}")
+    
+    return "\n\n".join(formatted_output)
 
 
 def get_browser_tools_config():

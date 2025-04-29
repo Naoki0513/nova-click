@@ -79,9 +79,13 @@ def dispatch_browser_tool(tool_name: str, params=None):
     elif tool_name == 'get_ax_tree':
         return get_ax_tree()
     elif tool_name == 'click_element':
-        return click_element(params.get('role'), params.get('name'))
+        if params is None:
+            return {'status': 'error', 'message': 'パラメータが指定されていません'}
+        return click_element(params.get('role', ''), params.get('name', ''))
     elif tool_name == 'input_text':
-        return input_text(params.get('role'), params.get('name'), params.get('text'))
+        if params is None:
+            return {'status': 'error', 'message': 'パラメータが指定されていません'}
+        return input_text(params.get('role', ''), params.get('name', ''), params.get('text', ''))
     else:
         add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")
         return {'status': 'error', 'message': f'不明なツール: {tool_name}'} 
