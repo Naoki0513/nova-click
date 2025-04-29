@@ -46,7 +46,7 @@ async def _async_worker():
     page = await ctx.get_current_page()
 
     # 初期ページを開く
-    await page.goto("https://www.google.com", wait_until="networkidle")
+    await page.goto("https://www.google.com", wait_until="networkidle", timeout=30000)
     add_debug_log("ワーカースレッド: Google を開きました")
 
     try:
@@ -57,7 +57,13 @@ async def _async_worker():
 
             if cmd == "get_ax_tree":
                 try:
-                    ax_tree = await page.accessibility.snapshot(root=None)
+                    # AX Tree取得前に短い待機を入れて、ページの初期化を確実にする
+                    await asyncio.sleep(0.5)
+                    # ページが確実に読み込まれていることを確認
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    
+                    # AX Treeを取得
+                    ax_tree = await page.accessibility.snapshot(root=None, interesting_only=False)
                     if ax_tree is None:
                         add_debug_log("AxTree取得結果がNoneでした")
                         _res_queue.put({"status": "success", "ax_tree": None, "message": "AxTreeが取得できませんでした"})
@@ -71,9 +77,14 @@ async def _async_worker():
             elif cmd == "navigate":
                 url = params.get("url", "")
                 try:
-                    await page.goto(url, wait_until="networkidle")
+                    # タイムアウトを増やし、待機条件を厳格化して安定性を向上
+                    response = await page.goto(url, wait_until="networkidle", timeout=30000)
                     add_debug_log(f"ワーカースレッド: {url} に移動しました")
-                    _res_queue.put({"status": "success"})
+                    
+                    # 成功した場合でもページの初期化を確実にするため短い待機
+                    await asyncio.sleep(1.0)
+                    
+                    _res_queue.put({"status": "success", "url": response.url if response else url})
                 except Exception as e:
                     add_debug_log(f"navigateエラー: {e}")
                     _res_queue.put({"status": "error", "message": str(e)})
@@ -83,8 +94,17 @@ async def _async_worker():
                 name = params.get("name")
                 try:
                     locator = page.get_by_role(role, name=name)
-                    await locator.click()
+                    # 操作前に要素が存在することを確認し、タイムアウト設定を増加
+                    await locator.wait_for(state="visible", timeout=5000)
+                    await locator.click(timeout=10000)
                     add_debug_log(f"ワーカースレッド: {role} '{name}' をクリックしました")
+                    
+                    # クリック後にDOMの更新を待機
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception as wait_error:
+                        add_debug_log(f"クリック後のDOM更新待機中にエラー（無視）: {wait_error}")
+                    
                     _res_queue.put({"status": "success"})
                 except Exception as e:
                     add_debug_log(f"click_elementエラー: {e}")
@@ -96,9 +116,18 @@ async def _async_worker():
                 text = params.get("text")
                 try:
                     locator = page.get_by_role(role, name=name)
-                    await locator.fill(text)
-                    await locator.press("Enter")
+                    # 操作前に要素が存在することを確認し、タイムアウト設定を増加
+                    await locator.wait_for(state="visible", timeout=5000)
+                    await locator.fill(text, timeout=10000)
+                    await locator.press("Enter", timeout=5000)
                     add_debug_log(f"ワーカースレッド: {role} '{name}' に '{text}' を入力しました")
+                    
+                    # Enter押下後にDOMの更新を待機
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception as wait_error:
+                        add_debug_log(f"入力後のDOM更新待機中にエラー（無視）: {wait_error}")
+                    
                     _res_queue.put({"status": "success"})
                 except Exception as e:
                     add_debug_log(f"input_textエラー: {e}")

@@ -3,8 +3,8 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Union, Tuple
 from .utils import add_debug_log, load_credentials
-from .browser.worker import initialize_browser, _ensure_worker_initialized
-from .browser import dispatch_browser_tool
+from .browser.worker import initialize_browser
+from .browser import dispatch_browser_tool, get_ax_tree
 from .prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -36,15 +36,8 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
     return [
         {
             "toolSpec": {
-                "name": "get_ax_tree",
-                "description": "ページの構造理解と操作対象特定のため、操作前後に呼び出す必要があることを追記します。現在のページのアクセシビリティツリー（AX Tree）を取得します。",
-                "inputSchema": { "json": { "type": "object" } }
-            }
-        },
-        {
-            "toolSpec": {
                 "name": "click_element",
-                "description": "AX Treeから正確な role と name を特定してから使うことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします",
+                "description": "プロンプト内のAX Treeから正確な role と name を特定してから使うことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします。実行後の最新のAX Treeが自動的に結果に含まれます。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -60,7 +53,7 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "AX Treeから正確な role と name を特定してから使うこと、Enterキーを押すことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力してEnterキーを押します",
+                "description": "プロンプト内のAX Treeから正確な role と name を特定してから使うこと、Enterキーを押すことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力してEnterキーを押します。実行後の最新のAX Treeが自動的に結果に含まれます。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -84,8 +77,40 @@ def update_token_usage(response: Dict[str, Any], token_usage: Dict[str, int]) ->
     token_usage["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
     return token_usage
 
+def _get_current_ax_tree() -> Tuple[Optional[Dict], Optional[str]]:
+    """現在のAX Treeを取得するヘルパー関数"""
+    ax_tree_result = get_ax_tree()
+    if ax_tree_result.get('status') == 'success':
+        return ax_tree_result.get('ax_tree'), None
+    else:
+        error_message = f"AX Treeの取得に失敗しました: {ax_tree_result.get('message', '不明なエラー')}"
+        logger.error(error_message)
+        return None, error_message
+
+def format_user_query_with_ax_tree(user_input: str, ax_tree: Optional[Dict]) -> str:
+    """ユーザー入力とAX Treeを組み合わせたフォーマット済みテキストを返します"""
+    ax_tree_str = "AX Treeを取得できませんでした。"
+    if ax_tree is not None:
+        try:
+            ax_tree_json = json.dumps(ax_tree, ensure_ascii=False, indent=2)
+            # 長さ制限を適用
+            MAX_AX_TREE_LENGTH = 100000
+            if len(ax_tree_json) > MAX_AX_TREE_LENGTH:
+                ax_tree_json = ax_tree_json[:MAX_AX_TREE_LENGTH] + "\n... (truncated)"
+            ax_tree_str = f"現在のページのAX Tree:\n```json\n{ax_tree_json}\n```"
+        except Exception as e:
+            ax_tree_str = f"AX Treeの変換エラー: {e}"
+    
+    formatted_text = f"""ユーザーからの指示: {user_input}
+
+{ax_tree_str}
+
+上記のユーザー指示と現在のページ状態（AX Tree）を基に応答またはツールを実行してください。"""
+    
+    return formatted_text
+
 def handle_user_query(
-    user_input: str, 
+    user_input: str,
     bedrock_session,
     system_prompt: str,
     model_id: str,
@@ -94,19 +119,13 @@ def handle_user_query(
     """ユーザー入力を処理して応答を返す"""
     result = {
         "status": "success",
-        "messages": [],
-        "token_usage": session_state.get("token_usage", {}) if session_state else {
+        "messages": [], # 最終的にユーザーに見せるためのメッセージ履歴
+        "token_usage": {
             "inputTokens": 0,
             "outputTokens": 0,
             "totalTokens": 0,
-            "cacheReadInputTokens": 0,
-            "cacheWriteInputTokens": 0
         }
     }
-    
-    init_status = _ensure_worker_initialized()
-    if init_status.get('status') != 'success':
-        return {"status": "error", "message": f"ブラウザワーカーの初期化に失敗しました: {init_status.get('message')}"}
 
     add_debug_log(f"ユーザー入力: {user_input}")
 
@@ -116,74 +135,146 @@ def handle_user_query(
         "toolChoice": {"auto": {}}
     }
 
-    messages = []
-    messages.append({"role": "user", "content": [{"text": user_input}]})
+    # Bedrock APIに渡すためのメッセージ履歴（内部管理用）
+    messages_for_api = []
+    
+    # 初回リクエスト時、現在のAX Treeを取得して組み込み
+    current_ax_tree, ax_tree_error = _get_current_ax_tree()
+    
+    # ユーザー入力とAX Treeを組み合わせたテキストを作成
+    formatted_user_input = format_user_query_with_ax_tree(user_input, current_ax_tree)
+    
+    # 初回のユーザーメッセージを作成
+    initial_user_message = {"role": "user", "content": [{"text": formatted_user_input}]}
+    messages_for_api.append(initial_user_message)
+    
+    # ユーザーには元の質問のみを表示する形式でメッセージ履歴に追加
+    user_facing_message = {"role": "user", "content": [{"text": user_input}]}
+    result["messages"].append(user_facing_message)
 
-    while True:
+    max_turns = 10
+    turn_count = 0
+
+    while turn_count < max_turns:
+        turn_count += 1
+        add_debug_log(f"--- ターン {turn_count} 開始 ---")
+
+        # 4. Bedrock API呼び出し
         try:
             inference_config = get_inference_config(model_id)
             request_params = {
                 "modelId": model_id,
-                "messages": messages,
+                "messages": messages_for_api, # フォーマット済みメッセージを使用
                 "system": [{"text": system_prompt}],
                 "inferenceConfig": inference_config,
                 "toolConfig": tool_config
             }
-            if "amazon.nova" in model_id:
-                request_params["additionalModelRequestFields"] = {"inferenceConfig": {"topK": 1}}
-            add_debug_log(request_params)
+            add_debug_log(request_params, group="Bedrock Request")
             response = bedrock_session.converse(**request_params)
-            add_debug_log(response)
+            add_debug_log(response, group="Bedrock Response")
 
             result["token_usage"] = update_token_usage(response, result["token_usage"])
+
         except Exception as e:
             err_msg = str(e)
-            add_debug_log(f"API呼び出しエラー: {err_msg}")
-            return {"status": "error", "message": f"APIエラー: {err_msg}"}
+            add_debug_log(f"Bedrock API呼び出しエラー: {err_msg}")
+            result["status"] = "error"
+            result["message"] = f"Bedrock APIエラー: {err_msg}"
+            break
 
         output = response.get("output", {})
         message = output.get("message", {})
         stop_reason = response.get("stopReason")
 
+        # 5. アシスタント応答をAPI用履歴と結果用履歴に追加
         assistant_message = {"role": "assistant", "content": message.get("content", [])}
-        messages.append(assistant_message)
-        result["messages"].append(assistant_message)
+        messages_for_api.append(assistant_message)
+        result["messages"].append(assistant_message) # ユーザーに見せる結果にも追加
 
         tool_calls = [c["toolUse"] for c in message.get("content", []) if "toolUse" in c]
+
+        # 6. ツール実行と結果の作成
         if tool_calls:
-            for tool in tool_calls:
-                tool_name = tool.get("name") or tool.get("tool_name") or tool.get("toolUseId")
-                params = tool.get("input") or {}
+            merged_user_content = [] # このターンのツール結果を入れるリスト
+            tool_execution_failed = False # ツール実行失敗フラグ
+            
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("name")
+                tool_input = tool_call.get("input", {})
+                tool_use_id = tool_call.get("toolUseId")
+
                 logger.info(f"ツール実行: {tool_name}")
-                if params:
-                    logger.debug(f"パラメータ: {json.dumps(params, ensure_ascii=False)}")
-                tool_result = dispatch_browser_tool(tool_name, params)
-                logger.info(f"実行結果: {json.dumps(tool_result, ensure_ascii=False)}")
+                if tool_input:
+                    logger.debug(f"パラメータ: {json.dumps(tool_input, ensure_ascii=False)}")
 
-                if tool_result.get('status') == 'error':
-                    error_message = f"ツール '{tool_name}' の実行に失敗しました: {tool_result.get('message')}"
-                    logger.error(error_message)
-                    error_response = {"role": "assistant", "content": [{"text": f"エラーのため処理を中断しました: {tool_result.get('message')}"}]}
-                    messages.append(error_response)
-                    result["messages"].append(error_response)
-                    result["status"] = "error"
-                    result["message"] = error_message
-                    return result
+                # ツール実行（ツール側でAX Tree取得処理が追加されている）
+                tool_result_data = dispatch_browser_tool(tool_name, tool_input)
+                logger.info(f"ツール実行結果: {json.dumps(tool_result_data, ensure_ascii=False)}")
 
-                tool_result_block = {
-                    "role": "user",
-                    "content": [{
-                        "toolResult": {
-                            "toolUseId": tool.get("toolUseId"),
-                            "content": [{"json": tool_result}],
-                            "status": "success"
-                        }
-                    }]
+                # ツール実行ステータスを確認
+                tool_status = "success" if tool_result_data.get('status') == 'success' else "error"
+                
+                # ツール結果JSONにはツール実行結果とAX Tree情報を含める
+                tool_result_json = {
+                    "operation_status": tool_result_data.get('status'),
+                    "message": tool_result_data.get('message', '')
                 }
-                messages.append(tool_result_block)
-                result["messages"].append(tool_result_block)
-            continue
+                
+                # ツール実行後に取得したAX Treeがあれば含める
+                if 'ax_tree' in tool_result_data:
+                    tool_result_json["ax_tree"] = tool_result_data.get('ax_tree')
+                    if 'ax_tree_message' in tool_result_data:
+                        tool_result_json["ax_tree_message"] = tool_result_data.get('ax_tree_message')
+                
+                # toolResultブロックを作成
+                tool_result_block = {
+                    "toolResult": {
+                        "toolUseId": tool_use_id,
+                        "content": [{"json": tool_result_json}],
+                        "status": tool_status
+                    }
+                }
+                
+                merged_user_content.append(tool_result_block)
+                
+                if tool_status == "error":
+                    logger.error(f"ツール '{tool_name}' の実行に失敗しました: {tool_result_data.get('message')}")
+                    tool_execution_failed = True
 
-        break
-    
+            # マージした内容でuserメッセージを作成
+            merged_user_message = {"role": "user", "content": merged_user_content}
+            
+            # API用履歴と結果用履歴の両方に、このマージされたuserメッセージを追加
+            messages_for_api.append(merged_user_message)
+            result["messages"].append(merged_user_message)
+
+            continue # 次のループへ
+
+        # 7. ループ終了判定 (stop_reason)
+        if stop_reason == "end_turn":
+            add_debug_log("Stop reasonが 'end_turn' のため終了します。")
+            break
+        elif stop_reason == "tool_use":
+            add_debug_log("Stop reasonが 'tool_use' ですが、ツールが見つかりませんでした。予期せぬ状態のため終了します。")
+            result["status"] = "error"
+            result["message"] = "LLMがtool_useで停止しましたが、toolUseブロックがありませんでした。"
+            break
+        elif stop_reason: # 他のstop_reason (max_tokensなど)
+            add_debug_log(f"Stop reason '{stop_reason}' のため終了します。")
+            if stop_reason == "max_tokens":
+                 logger.warning("最大トークン数に達したため、応答が途中で打ち切られている可能性があります。")
+            break
+        else: # stop_reason が null や空文字の場合 (通常は発生しないはず)
+            add_debug_log("Stop reasonが不明です。予期せぬ状態のためループを終了します。")
+            result["status"] = "error"
+            result["message"] = "LLMが予期せぬ状態で停止しました（Stop reason不明）。"
+            break
+
+    if turn_count >= max_turns:
+        logger.warning(f"最大ターン数 ({max_turns}) に達したため、処理を終了します。")
+        if result["status"] == "success": # 他のエラーが発生していなければ
+             result["status"] = "error" # 最大ターン到達もエラー扱いにする場合
+             result["message"] = f"最大ターン数 ({max_turns}) に達しました。"
+
+    add_debug_log(f"--- 処理終了: Status={result['status']} ---")
     return result

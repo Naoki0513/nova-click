@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 def run_cli_mode() -> int:
 
     # --- ここで実行パラメータを設定 --- +
-    query = "東京の現在の天気を教えてください。" # 固定のクエリ
+    query = "amazonで佐藤のごはんをカートに入れて購入までして" # 固定のクエリ
     model_id = "us.amazon.nova-pro-v1:0"
     credentials_path = "credentials/aws_credentials.json"
-    debug = False # デバッグモードを無効にする場合は False
+    debug = True # デバッグモードを無効にする場合は False
     # ------------------------------------ +
 
     setup_logging(debug) # agent.utils からインポートした関数を呼び出す
