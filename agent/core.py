@@ -2,7 +2,7 @@ import boto3
 import json
 import logging
 from typing import Dict, Any, List, Optional, Union, Tuple
-from .utils import add_debug_log, load_credentials
+from .utils import add_debug_log, load_credentials, log_json_debug
 from .browser.worker import initialize_browser
 from .browser import dispatch_browser_tool, get_ax_tree
 from .prompts import get_system_prompt
@@ -37,13 +37,20 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "プロンプト内のAX Treeから正確な role と name を特定してから使うことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素をクリックします。実行後の最新のAX Treeが自動的に結果に含まれます。",
+                "description": "AX Treeから正確な role (`button` または `link`) と name を特定してから使用してください。指定された要素をクリックします。実行後の最新のAX Treeが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
-                            "role": { "type": "string" },
-                            "name": { "type": "string" }
+                            "role": {
+                                "type": "string",
+                                "enum": ["button", "link"],
+                                "description": "クリックする要素のロール。button または link のみ指定可能です。"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "クリックする要素のアクセシビリティ名（AX Treeで確認）"
+                            }
                         },
                         "required": ["role", "name"]
                     }
@@ -53,14 +60,24 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "プロンプト内のAX Treeから正確な role と name を特定してから使うこと、Enterキーを押すことを追記します。アクセシビリティツリーを基に指定されたroleとnameの要素にテキストを入力してEnterキーを押します。実行後の最新のAX Treeが自動的に結果に含まれます。",
+                "description": "AX Treeから正確な role (`combobox`) と name を特定してから使用してください。指定された要素にテキストを入力し、Enterキーを押します。実行後の最新のAX Treeが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
-                            "role": { "type": "string" },
-                            "name": { "type": "string" },
-                            "text": { "type": "string" }
+                            "role": {
+                                "type": "string",
+                                "enum": ["combobox"],
+                                "description": "テキストを入力する要素のロール。combobox のみ指定可能です。"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "テキストを入力する要素のアクセシビリティ名（AX Treeで確認）"
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": "入力するテキスト"
+                            }
                         },
                         "required": ["role", "name", "text"]
                     }
@@ -152,7 +169,7 @@ def handle_user_query(
     user_facing_message = {"role": "user", "content": [{"text": user_input}]}
     result["messages"].append(user_facing_message)
 
-    max_turns = 10
+    max_turns = 20
     turn_count = 0
 
     while turn_count < max_turns:
@@ -169,9 +186,9 @@ def handle_user_query(
                 "inferenceConfig": inference_config,
                 "toolConfig": tool_config
             }
-            add_debug_log(request_params, group="Bedrock Request")
+            log_json_debug("Bedrock Request", request_params, level="DEBUG")
             response = bedrock_session.converse(**request_params)
-            add_debug_log(response, group="Bedrock Response")
+            log_json_debug("Bedrock Response", response, level="DEBUG")
 
             result["token_usage"] = update_token_usage(response, result["token_usage"])
 

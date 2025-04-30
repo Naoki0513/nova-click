@@ -146,3 +146,45 @@ def extract_text_from_assistant_message(message):
             text_parts.append(message.get("content"))
 
     return "\n".join(text_parts)
+
+def log_json_debug(name: str, data: Union[Dict[Any, Any], List[Any]], level: str = "DEBUG"):
+    """
+    Pretty-print JSON data to logs if the specified log level is enabled.
+
+    Args:
+        name: ロググループ名
+        data: JSONシリアライズ可能なdictまたはlist
+        level: ログレベル文字列 ("DEBUG", "INFO" など)
+    """
+    log_level = getattr(logger, level.upper(), logging.DEBUG) if False else getattr(logging, level.upper(), logging.DEBUG)
+    # 指定レベルが有効であれば出力およびファイルに保存
+    if logger.isEnabledFor(log_level):
+        try:
+            json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.log(log_level, f"[{name}] JSON serialization error: {e}")
+            return
+        # コンソール出力
+        logger.log(log_level, f"[{name}] JSON Data:\n{json_str}")
+        # ファイル出力: log/YYYY-MM-DD_HH-MM-SS.json に整形済みJSONを1ファイルとして出力
+        try:
+            # プロジェクトルートの log ディレクトリを作成
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)
+            log_dir = os.path.join(project_root, 'log')
+            os.makedirs(log_dir, exist_ok=True)
+            # タイムスタンプ付きファイル名
+            now = datetime.datetime.now()
+            file_name = now.strftime('%Y-%m-%d_%H-%M-%S') + '.json'
+            file_path = os.path.join(log_dir, file_name)
+            # 整形済みJSONファイルとして書き出し
+            record = {
+                'timestamp': now.isoformat(),
+                'group': name,
+                'level': level.upper(),
+                'data': data
+            }
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(record, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"[{name}] ログファイルの書き込みに失敗しました: {e}")
