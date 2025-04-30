@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union, Tuple
 from .utils import add_debug_log, load_credentials, log_json_debug
 from .browser.worker import initialize_browser
-from .browser import dispatch_browser_tool, get_ax_tree
+from .browser import dispatch_browser_tool, get_aria_snapshot
 from .prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "AX Treeから正確な role (`button` または `link`) と name を特定してから使用してください。指定された要素をクリックします。実行後の最新のAX Treeが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから正確な role (`button` または `link`) と name を特定してから使用してください。指定された要素をクリックします。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -49,7 +49,11 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
                             },
                             "name": {
                                 "type": "string",
-                                "description": "クリックする要素のアクセシビリティ名（AX Treeで確認）"
+                                "description": "クリックする要素のアクセシビリティ名（ARIA Snapshotで確認）"
+                            },
+                            "ref_id": {
+                                "type": "string",
+                                "description": "クリックする要素の参照ID（ARIA Snapshotで確認）"
                             }
                         },
                         "required": ["role", "name"]
@@ -60,7 +64,7 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "AX Treeから正確な role (`combobox`) と name を特定してから使用してください。指定された要素にテキストを入力し、Enterキーを押します。実行後の最新のAX Treeが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから正確な role (`combobox`) と name を特定してから使用してください。指定された要素にテキストを入力し、Enterキーを押します。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -72,11 +76,15 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
                             },
                             "name": {
                                 "type": "string",
-                                "description": "テキストを入力する要素のアクセシビリティ名（AX Treeで確認）"
+                                "description": "テキストを入力する要素のアクセシビリティ名（ARIA Snapshotで確認）"
                             },
                             "text": {
                                 "type": "string",
                                 "description": "入力するテキスト"
+                            },
+                            "ref_id": {
+                                "type": "string",
+                                "description": "テキストを入力する要素の参照ID（ARIA Snapshotで確認）"
                             }
                         },
                         "required": ["role", "name", "text"]
@@ -94,35 +102,35 @@ def update_token_usage(response: Dict[str, Any], token_usage: Dict[str, int]) ->
     token_usage["totalTokens"] += usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
     return token_usage
 
-def _get_current_ax_tree() -> Tuple[Optional[Dict], Optional[str]]:
-    """現在のAX Treeを取得するヘルパー関数"""
-    ax_tree_result = get_ax_tree()
-    if ax_tree_result.get('status') == 'success':
-        return ax_tree_result.get('ax_tree'), None
+def _get_current_aria_snapshot() -> Tuple[Optional[Dict], Optional[str]]:
+    """現在のARIA Snapshotを取得するヘルパー関数"""
+    aria_snapshot_result = get_aria_snapshot()
+    if aria_snapshot_result.get('status') == 'success':
+        return aria_snapshot_result.get('aria_snapshot'), None
     else:
-        error_message = f"AX Treeの取得に失敗しました: {ax_tree_result.get('message', '不明なエラー')}"
+        error_message = f"ARIA Snapshotの取得に失敗しました: {aria_snapshot_result.get('message', '不明なエラー')}"
         logger.error(error_message)
         return None, error_message
 
-def format_user_query_with_ax_tree(user_input: str, ax_tree: Optional[Dict]) -> str:
-    """ユーザー入力とAX Treeを組み合わせたフォーマット済みテキストを返します"""
-    ax_tree_str = "AX Treeを取得できませんでした。"
-    if ax_tree is not None:
+def format_user_query_with_aria_snapshot(user_input: str, aria_snapshot: Optional[Dict]) -> str:
+    """ユーザー入力とARIA Snapshotを組み合わせたフォーマット済みテキストを返します"""
+    aria_snapshot_str = "ARIA Snapshotを取得できませんでした。"
+    if aria_snapshot is not None:
         try:
-            ax_tree_json = json.dumps(ax_tree, ensure_ascii=False, indent=2)
+            aria_snapshot_json = json.dumps(aria_snapshot, ensure_ascii=False, indent=2)
             # 長さ制限を適用
-            MAX_AX_TREE_LENGTH = 100000
-            if len(ax_tree_json) > MAX_AX_TREE_LENGTH:
-                ax_tree_json = ax_tree_json[:MAX_AX_TREE_LENGTH] + "\n... (truncated)"
-            ax_tree_str = f"現在のページのAX Tree:\n```json\n{ax_tree_json}\n```"
+            MAX_ARIA_SNAPSHOT_LENGTH = 100000
+            if len(aria_snapshot_json) > MAX_ARIA_SNAPSHOT_LENGTH:
+                aria_snapshot_json = aria_snapshot_json[:MAX_ARIA_SNAPSHOT_LENGTH] + "\n... (truncated)"
+            aria_snapshot_str = f"現在のページのARIA Snapshot:\n```json\n{aria_snapshot_json}\n```"
         except Exception as e:
-            ax_tree_str = f"AX Treeの変換エラー: {e}"
+            aria_snapshot_str = f"ARIA Snapshotの変換エラー: {e}"
     
     formatted_text = f"""ユーザーからの指示: {user_input}
 
-{ax_tree_str}
+{aria_snapshot_str}
 
-上記のユーザー指示と現在のページ状態（AX Tree）を基に応答またはツールを実行してください。"""
+上記のユーザー指示と現在のページ状態（ARIA Snapshot）を基に応答またはツールを実行してください。"""
     
     return formatted_text
 
@@ -155,11 +163,11 @@ def handle_user_query(
     # Bedrock APIに渡すためのメッセージ履歴（内部管理用）
     messages_for_api = []
     
-    # 初回リクエスト時、現在のAX Treeを取得して組み込み
-    current_ax_tree, ax_tree_error = _get_current_ax_tree()
+    # 初回リクエスト時、現在のARIA Snapshotを取得して組み込み
+    current_aria_snapshot, aria_snapshot_error = _get_current_aria_snapshot()
     
-    # ユーザー入力とAX Treeを組み合わせたテキストを作成
-    formatted_user_input = format_user_query_with_ax_tree(user_input, current_ax_tree)
+    # ユーザー入力とARIA Snapshotを組み合わせたテキストを作成
+    formatted_user_input = format_user_query_with_aria_snapshot(user_input, current_aria_snapshot)
     
     # 初回のユーザーメッセージを作成
     initial_user_message = {"role": "user", "content": [{"text": formatted_user_input}]}
@@ -224,24 +232,24 @@ def handle_user_query(
                 if tool_input:
                     logger.debug(f"パラメータ: {json.dumps(tool_input, ensure_ascii=False)}")
 
-                # ツール実行（ツール側でAX Tree取得処理が追加されている）
+                # ツール実行（ツール側でARIA Snapshot取得処理が追加されている）
                 tool_result_data = dispatch_browser_tool(tool_name, tool_input)
                 logger.info(f"ツール実行結果: {json.dumps(tool_result_data, ensure_ascii=False)}")
 
                 # ツール実行ステータスを確認
                 tool_status = "success" if tool_result_data.get('status') == 'success' else "error"
                 
-                # ツール結果JSONにはツール実行結果とAX Tree情報を含める
+                # ツール結果JSONにはツール実行結果とARIA Snapshot情報を含める
                 tool_result_json = {
                     "operation_status": tool_result_data.get('status'),
                     "message": tool_result_data.get('message', '')
                 }
                 
-                # ツール実行後に取得したAX Treeがあれば含める
-                if 'ax_tree' in tool_result_data:
-                    tool_result_json["ax_tree"] = tool_result_data.get('ax_tree')
-                    if 'ax_tree_message' in tool_result_data:
-                        tool_result_json["ax_tree_message"] = tool_result_data.get('ax_tree_message')
+                # ツール実行後に取得したARIA Snapshotがあれば含める
+                if 'aria_snapshot' in tool_result_data:
+                    tool_result_json["aria_snapshot"] = tool_result_data.get('aria_snapshot')
+                    if 'aria_snapshot_message' in tool_result_data:
+                        tool_result_json["aria_snapshot_message"] = tool_result_data.get('aria_snapshot_message')
                 
                 # toolResultブロックを作成
                 tool_result_block = {

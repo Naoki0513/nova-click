@@ -7,159 +7,319 @@ from typing import Dict, Any, Optional, Tuple
 from .worker import initialize_browser, _ensure_worker_initialized, _cmd_queue, _res_queue
 
 
-def get_ax_tree(wait_time: float = 0.5):
-    """バックブラウザワーカースレッドからAX Tree情報を取得し、
-    button, link, combobox要素のみを抽出してフラットリストで返します。"""
+def get_aria_snapshot(wait_time: float = 0.5):
+    """ブラウザワーカースレッドからARIA Snapshot情報を取得し、
+    button, link, combobox要素などをフラットリストで返します。"""
     if wait_time > 0:
-        add_debug_log(f"tools.get_ax_tree: {wait_time}秒待機してからAX Tree取得")
-        time.sleep(wait_time)  # AX Tree取得前に指定された時間だけ待機
+        add_debug_log(f"tools.get_aria_snapshot: {wait_time}秒待機してからARIA Snapshot取得")
+        time.sleep(wait_time)  # ARIA Snapshot取得前に指定された時間だけ待機
 
-    add_debug_log("tools.get_ax_tree: AxTree取得要求送信")
-    # ワーカースレッドとの通信ロジックはそのまま維持
-    _cmd_queue.put({'command': 'get_ax_tree'})
+    add_debug_log("tools.get_aria_snapshot: ARIAスナップショット取得要求送信")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'get_aria_snapshot'})
     try:
-        result = _res_queue.get(timeout=15)
-    except queue.Empty:
-        add_debug_log("tools.get_ax_tree: タイムアウト")
-        return {'status': 'error', 'message': 'AxTree取得タイムアウト'}
-
-    # 成功時に結果をフィルタリングして返す
-    if result.get('status') == 'success' and 'ax_tree' in result:
-        try:
-            # JSONシリアライズしてPythonオブジェクトにする
-            raw_tree = json.loads(json.dumps(result['ax_tree'], default=lambda o: str(o)))
-            # フラットリストにして抽出
-            filtered: list = []
-            def dfs(node: dict):
-                role = node.get('role')
-                name = node.get('name')
-                if role in ('button', 'link', 'combobox'):
-                    filtered.append({'role': role, 'name': name})
-                for child in node.get('children', []):
-                    dfs(child)
-            dfs(raw_tree)
-            result['ax_tree'] = filtered
-        except Exception as e:
-            add_debug_log(f"tools.get_ax_tree: AxTree処理中にエラー: {e}")
-            # エラー時は空リストで返却
-            return {'status': 'success', 'ax_tree': [], 'message': f'AxTree処理中にエラー: {e}'}
-    return result
+        res = _res_queue.get(timeout=10.0)
+        add_debug_log(f"tools.get_aria_snapshot: 応答受信 status={res.get('status')}")
+        
+        if res.get('status') == 'success':
+            return {
+                'status': 'success',
+                'aria_snapshot': res.get('aria_snapshot', []),
+                'message': res.get('message', 'ARIA Snapshot取得成功')
+            }
+        else:
+            error_msg = res.get('message', '不明なエラー')
+            add_debug_log(f"tools.get_aria_snapshot: エラー {error_msg}")
+            return {
+                'status': 'error',
+                'aria_snapshot': [],
+                'message': f"ARIA Snapshot取得エラー: {error_msg}"
+            }
+    except Empty:
+        add_debug_log("tools.get_aria_snapshot: タイムアウト")
+        return {
+            'status': 'error',
+            'aria_snapshot': [],
+            'message': 'ARIA Snapshot取得タイムアウト'
+        }
 
 
-def click_element(role: str, name: str):
-    """指定したroleとnameの要素をクリックし、操作後のAX Treeを取得します"""
-    add_debug_log(f"tools.click_element: role={role}, name={name}")
-    result = {'status': 'error', 'message': '不明なエラー'} # デフォルトの結果を定義
-
+def goto_url(url: str) -> Dict[str, Any]:
+    """指定したURLに移動します"""
+    add_debug_log(f"tools.goto_url: {url}に移動")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'goto', 'params': {'url': url}})
     try:
-        # ワーカースレッドとの通信ロジック
-        _cmd_queue.put({'command': 'click_element', 'params': {'role': role, 'name': name}})
-        result = _res_queue.get(timeout=10) # ここで結果が上書きされる可能性がある
+        res = _res_queue.get(timeout=30.0)
+        add_debug_log(f"tools.goto_url: 応答受信 status={res.get('status')}")
+        return res
+    except Empty:
+        add_debug_log("tools.goto_url: タイムアウト")
+        return {'status': 'error', 'message': 'タイムアウト'}
 
-        # クリック操作が成功した場合、AX Treeを取得して結果に含める
-        if result.get('status') == 'success':
-            add_debug_log("tools.click_element: 操作成功、AX Tree取得（3秒待機）")
-            # クリック後はページ遷移や内容更新の可能性があるため、比較的長めに待機
-            ax_tree_result = get_ax_tree(wait_time=3.0)
 
-            # 元のクリック操作の結果を保持しつつ、AX Treeも追加
-            result['ax_tree'] = ax_tree_result.get('ax_tree')
-            result['ax_tree_message'] = ax_tree_result.get('message') # messageも取得
-
-            # AX Treeの取得に失敗した場合、再試行
-            if not result.get('ax_tree') or ax_tree_result.get('status') != 'success':
-                add_debug_log("tools.click_element: 最初のAX Tree取得失敗、再試行します（2秒待機）")
-                time.sleep(2.0)  # 2秒待機してから再試行
-                ax_tree_result = get_ax_tree(wait_time=0)  # 待機時間は0に設定（すでに待機済み）
-                result['ax_tree'] = ax_tree_result.get('ax_tree')
-                result['ax_tree_message'] = ax_tree_result.get('message') # messageも取得
-
-            # それでも失敗した場合はメッセージを更新
-            if not result.get('ax_tree') or ax_tree_result.get('status') != 'success':
-                add_debug_log("tools.click_element: AX Tree取得再試行も失敗")
-                # すでに ax_tree_message は設定されているはずなので、ここでは何もしないか、特定のメッセージを設定
-                if not result.get('ax_tree_message'): # メッセージがなければ設定
-                    result['ax_tree_message'] = ax_tree_result.get('message', 'AX Tree取得エラー')
-
-    except queue.Empty:
+def click_element(role: str = None, name: str = None, ref_id: str = None) -> Dict[str, Any]:
+    """指定した要素をクリックします。
+    
+    Args:
+        role: 要素のロール名 (button, link など)
+        name: 要素のテキスト内容やラベル
+        ref_id: 要素の参照ID (get_aria_snapshot で取得したもの)
+    
+    Returns:
+        操作結果の辞書
+    """
+    params = {}
+    if role:
+        params['role'] = role
+    if name:
+        params['name'] = name
+    if ref_id:
+        params['ref_id'] = ref_id
+        
+    if not params:
+        add_debug_log("tools.click_element: パラメータが指定されていません")
+        return {'status': 'error', 'message': '要素を特定するパラメータが必要です (role, name, または ref_id)'}
+    
+    add_debug_log(f"tools.click_element: {params}の要素をクリック")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'click_element', 'params': params})
+    
+    try:
+        res = _res_queue.get(timeout=10.0)
+        add_debug_log(f"tools.click_element: 応答受信 status={res.get('status')}")
+        
+        # 操作実行後にARIA Snapshotを取得
+        aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+        
+        # 結果にARIA Snapshotを追加
+        res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+        if aria_snapshot_result.get('status') != 'success':
+            res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        
+        return res
+    except Empty:
         add_debug_log("tools.click_element: タイムアウト")
-        result = {'status': 'error', 'message': 'click_elementタイムアウト'}
-    except Exception as e:
-        add_debug_log(f"tools.click_element: 予期せぬエラー: {e}")
-        result = {'status': 'error', 'message': f'予期せぬエラー: {e}'}
+        error_res = {'status': 'error', 'message': 'タイムアウト'}
+        
+        # エラー時にもARIA Snapshotを取得して含める
+        try:
+            aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+            error_res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+            if aria_snapshot_result.get('status') != 'success':
+                error_res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        except:
+            error_res['aria_snapshot_message'] = "ARIA Snapshot取得に失敗しました"
+        
+        return error_res
 
-    # 操作が失敗した場合でもAX Treeを取得する
-    if result.get('status') != 'success':
-        add_debug_log(f"tools.click_element: 操作失敗 ({result.get('message')})、AX Tree取得試行")
-        ax_tree_result_on_fail = get_ax_tree(wait_time=0) # 失敗時は待たない
-        result['ax_tree'] = ax_tree_result_on_fail.get('ax_tree')
-        result['ax_tree_message'] = ax_tree_result_on_fail.get('message')
 
-    return result
-
-
-def input_text(role: str, name: str, text: str):
-    """指定したroleとnameの要素にテキストを入力しEnterを押し、操作後のAX Treeを取得します"""
-    add_debug_log(f"tools.input_text: role={role}, name={name}, text={text}")
-    result = {'status': 'error', 'message': '不明なエラー'} # デフォルトの結果を定義
-
+def input_text(text: str, role: str = None, name: str = None, ref_id: str = None) -> Dict[str, Any]:
+    """指定した要素にテキストを入力します。
+    
+    Args:
+        text: 入力するテキスト
+        role: 要素のロール名 (textbox, searchbox など)
+        name: 要素のプレースホルダーやラベル
+        ref_id: 要素の参照ID (get_aria_snapshot で取得したもの)
+    
+    Returns:
+        操作結果の辞書
+    """
+    params = {'text': text}
+    if role:
+        params['role'] = role
+    if name:
+        params['name'] = name
+    if ref_id:
+        params['ref_id'] = ref_id
+        
+    if len(params) <= 1:
+        add_debug_log("tools.input_text: 要素特定パラメータが指定されていません")
+        return {'status': 'error', 'message': '要素を特定するパラメータが必要です (role, name, または ref_id)'}
+        
+    add_debug_log(f"tools.input_text: {params}にテキスト入力")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'input_text', 'params': params})
+    
     try:
-        # ワーカースレッドとの通信ロジック
-        _cmd_queue.put({'command': 'input_text', 'params': {'role': role, 'name': name, 'text': text}})
-        result = _res_queue.get(timeout=10) # ここで結果が上書きされる可能性がある
-
-        # テキスト入力操作が成功した場合、AX Treeを取得して結果に含める
-        if result.get('status') == 'success':
-            add_debug_log("tools.input_text: 操作成功、AX Tree取得（2秒待機）")
-            # テキスト入力+Enter後はページ遷移の可能性があるため、やや長めに待機
-            ax_tree_result = get_ax_tree(wait_time=2.0)
-
-            # 元の入力操作の結果を保持しつつ、AX Treeも追加
-            result['ax_tree'] = ax_tree_result.get('ax_tree')
-            result['ax_tree_message'] = ax_tree_result.get('message') # messageも取得
-
-            # AX Treeの取得に失敗した場合、再試行
-            if not result.get('ax_tree') or ax_tree_result.get('status') != 'success':
-                add_debug_log("tools.input_text: 最初のAX Tree取得失敗、再試行します（2秒待機）")
-                time.sleep(2.0)  # 2秒待機してから再試行
-                ax_tree_result = get_ax_tree(wait_time=0)  # 待機時間は0に設定（すでに待機済み）
-                result['ax_tree'] = ax_tree_result.get('ax_tree')
-                result['ax_tree_message'] = ax_tree_result.get('message') # messageも取得
-
-            # それでも失敗した場合はメッセージを更新
-            if not result.get('ax_tree') or ax_tree_result.get('status') != 'success':
-                add_debug_log("tools.input_text: AX Tree取得再試行も失敗")
-                if not result.get('ax_tree_message'): # メッセージがなければ設定
-                    result['ax_tree_message'] = ax_tree_result.get('message', 'AX Tree取得エラー')
-
-    except queue.Empty:
+        res = _res_queue.get(timeout=10.0)
+        add_debug_log(f"tools.input_text: 応答受信 status={res.get('status')}")
+        
+        # 操作実行後にARIA Snapshotを取得
+        aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+        
+        # 結果にARIA Snapshotを追加
+        res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+        if aria_snapshot_result.get('status') != 'success':
+            res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        
+        return res
+    except Empty:
         add_debug_log("tools.input_text: タイムアウト")
-        result = {'status': 'error', 'message': 'input_textタイムアウト'}
-    except Exception as e:
-        add_debug_log(f"tools.input_text: 予期せぬエラー: {e}")
-        result = {'status': 'error', 'message': f'予期せぬエラー: {e}'}
+        error_res = {'status': 'error', 'message': 'タイムアウト'}
+        
+        # エラー時にもARIA Snapshotを取得して含める
+        try:
+            aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+            error_res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+            if aria_snapshot_result.get('status') != 'success':
+                error_res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        except:
+            error_res['aria_snapshot_message'] = "ARIA Snapshot取得に失敗しました"
+        
+        return error_res
 
-    # 操作が失敗した場合でもAX Treeを取得する
-    if result.get('status') != 'success':
-        add_debug_log(f"tools.input_text: 操作失敗 ({result.get('message')})、AX Tree取得試行")
-        ax_tree_result_on_fail = get_ax_tree(wait_time=0) # 失敗時は待たない
-        result['ax_tree'] = ax_tree_result_on_fail.get('ax_tree')
-        result['ax_tree_message'] = ax_tree_result_on_fail.get('message')
 
+def get_current_url() -> str:
+    """現在表示中のページのURLを取得します"""
+    add_debug_log("tools.get_current_url: 現在のURL取得")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'get_current_url'})
+    try:
+        res = _res_queue.get(timeout=5.0)
+        add_debug_log(f"tools.get_current_url: 応答受信 status={res.get('status')}")
+        if res.get('status') == 'success':
+            return res.get('url', '')
+        else:
+            return ''
+    except Empty:
+        add_debug_log("tools.get_current_url: タイムアウト")
+        return ''
+
+
+def save_cookies() -> Dict[str, Any]:
+    """現在のブラウザセッションのCookieを保存します"""
+    add_debug_log("tools.save_cookies: Cookie保存")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'save_cookies'})
+    try:
+        res = _res_queue.get(timeout=5.0)
+        add_debug_log(f"tools.save_cookies: 応答受信 status={res.get('status')}")
+        return res
+    except Empty:
+        add_debug_log("tools.save_cookies: タイムアウト")
+        return {'status': 'error', 'message': 'タイムアウト'}
+
+
+def cleanup_browser():
+    """ブラウザを終了します"""
+    add_debug_log("tools.cleanup_browser: ブラウザ終了")
+    _ensure_worker_initialized()
+    _cmd_queue.put({'command': 'quit'})
+    try:
+        res = _res_queue.get(timeout=10.0)
+        add_debug_log(f"tools.cleanup_browser: 応答受信 status={res.get('status')}")
+        return res
+    except Empty:
+        add_debug_log("tools.cleanup_browser: タイムアウト")
+        return {'status': 'error', 'message': 'タイムアウト'}
+
+
+def find_element_by_role_name(aria_snapshot, role=None, name=None):
+    """ARIA Snapshotから特定のroleとnameを持つ要素を探します。
+    
+    Args:
+        aria_snapshot: ARIAスナップショットのリスト
+        role: 要素のロール（button, link等）
+        name: 要素の表示名
+        
+    Returns:
+        マッチする要素のデータ（辞書）。見つからない場合はNone。
+    """
+    if not aria_snapshot:
+        return None
+    
+    for item in aria_snapshot:
+        item_role = item.get('role', '')
+        item_name = item.get('name', '')
+        
+        # roleとnameの両方が指定されている場合は両方一致する必要がある
+        if role and name:
+            if item_role == role and name in item_name:
+                return item
+        # roleのみ指定されている場合
+        elif role and not name:
+            if item_role == role:
+                return item
+        # nameのみ指定されている場合
+        elif name and not role:
+            if name in item_name:
+                return item
+    
+    return None
+
+
+def extract_interactive_elements(aria_snapshot):
+    """ARIAスナップショットから対話可能なUI要素を抽出します。
+    
+    Args:
+        aria_snapshot: ARIAスナップショットのリスト
+        
+    Returns:
+        Dict[str, list]: カテゴリ別の要素リスト
+    """
+    if not aria_snapshot:
+        return {}
+    
+    result = {
+        'buttons': [],
+        'links': [],
+        'inputs': [],
+        'other': []
+    }
+    
+    for item in aria_snapshot:
+        role = item.get('role', '').lower()
+        if role == 'button':
+            result['buttons'].append(item)
+        elif role == 'link':
+            result['links'].append(item)
+        elif role in ['textbox', 'searchbox', 'combobox']:
+            result['inputs'].append(item)
+        else:
+            result['other'].append(item)
+    
     return result
 
 
 def dispatch_browser_tool(tool_name: str, params=None):
     """指定されたツールを実行します"""
     add_debug_log(f"tools.dispatch_browser_tool: tool={tool_name}, params={params}")
+    result = None
+    
     if tool_name == 'click_element':
         if params is None:
-            return {'status': 'error', 'message': 'パラメータが指定されていません'}
-        return click_element(params.get('role', ''), params.get('name', ''))
+            result = {'status': 'error', 'message': 'パラメータが指定されていません'}
+        else:
+            result = click_element(
+                params.get('role', ''), 
+                params.get('name', ''), 
+                params.get('ref_id', None)
+            )
     elif tool_name == 'input_text':
         if params is None:
-            return {'status': 'error', 'message': 'パラメータが指定されていません'}
-        return input_text(params.get('role', ''), params.get('name', ''), params.get('text', ''))
+            result = {'status': 'error', 'message': 'パラメータが指定されていません'}
+        else:
+            result = input_text(
+                params.get('text', ''), 
+                params.get('role', ''), 
+                params.get('name', ''), 
+                params.get('ref_id', None)
+            )
     else:
         add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")
-        return {'status': 'error', 'message': f'不明なツール: {tool_name}'} 
+        result = {'status': 'error', 'message': f'不明なツール: {tool_name}'}
+    
+    # ARIA Snapshotがない場合は自動取得を試みる
+    if result and 'aria_snapshot' not in result:
+        try:
+            aria_snapshot_result = get_aria_snapshot(wait_time=0.3)
+            result['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+            if aria_snapshot_result.get('status') != 'success':
+                result['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        except Exception as e:
+            add_debug_log(f"tools.dispatch_browser_tool: ARIA Snapshot自動取得エラー: {e}")
+            result['aria_snapshot_message'] = "ARIA Snapshot自動取得に失敗しました"
+    
+    return result 

@@ -23,179 +23,388 @@ _COOKIE_FILE = "browser_cookies.json"
 async def _async_worker():
     """非同期ワーカースレッドとして Playwright と browser-use API を起動・操作します"""
     add_debug_log("ワーカースレッド: 非同期ブラウザワーカー開始")
-    # 必要なクラスをインポート
+    
+    # browser-useライブラリをインポート
     from browser_use.browser.browser import Browser, BrowserConfig
     from browser_use.browser.context import BrowserContextConfig
+    from playwright.async_api import async_playwright
 
-    # Browser 設定
-    cfg = BrowserConfig(
+    # Browser設定
+    browser_config = BrowserConfig(
         headless=False,
-        disable_security=False,
-        deterministic_rendering=True,
+        browser_binary_path=None,  # システムのChromeを使用
+        disable_security=True,  # iframe対応のために必要
+        deterministic_rendering=False,
+        extra_browser_args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins",
+            "--disable-site-isolation-trials"
+        ]
     )
-    browser_factory = Browser(config=cfg)
-    # Playwright ブラウザ起動
-    await browser_factory.get_playwright_browser()
-    # コンテキスト作成（クッキー永続化、ロケール、タイムゾーン設定）
-    ctx_config = BrowserContextConfig(
-        cookies_file=_COOKIE_FILE,
-        locale="en-US",
-        timezone_id="America/New_York",
-    )
-    ctx = await browser_factory.new_context(config=ctx_config)
-    page = await ctx.get_current_page()
 
-    # 初期ページを開く
-    await page.goto("https://www.google.com", wait_until="networkidle", timeout=30000)
-    add_debug_log("ワーカースレッド: Google を開きました")
+    # Context設定
+    context_config = BrowserContextConfig(
+        locale="ja-JP",
+        ignore_https_errors=True,
+        browser_window_size={"width": 1920, "height": 1080},
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+
+    # Cookieファイルがあれば読み込む
+    if os.path.exists(_COOKIE_FILE):
+        try:
+            with open(_COOKIE_FILE, "r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            context_config.cookies = cookies
+            add_debug_log(f"ワーカースレッド: クッキーを読み込みました: {len(cookies)} 件")
+        except Exception as e:
+            add_debug_log(f"ワーカースレッド: クッキーの読み込みに失敗: {e}")
+
+    # ブラウザを起動
+    add_debug_log("ワーカースレッド: ブラウザを起動します")
+    browser = None
+    page = None
 
     try:
+        # browser-useを使用してブラウザを起動
+        browser = Browser(config=browser_config)
+        context = await browser.new_context(config=context_config)
+        
+        # ページを開く
+        page = await context.get_current_page()
+        
+        # 初期ページとしてGoogleを開く
+        try:
+            add_debug_log("ワーカースレッド: 初期ページ(Google)を読み込みます")
+            await page.goto("https://www.google.com/", wait_until="networkidle", timeout=30000)
+            
+            # JavaScriptを使ってウィンドウにフォーカスを当てる
+            await page.evaluate("""() => {
+                window.focus();
+                document.body.click();
+            }""")
+            
+            add_debug_log("ワーカースレッド: 初期ページの読み込みが完了しました")
+        except Exception as e:
+            add_debug_log(f"ワーカースレッド: 初期ページの読み込みでエラーが発生しました: {e}")
+        
+        # コマンド処理ループ
         while True:
-            cmd_data = _cmd_queue.get()
-            cmd = cmd_data.get("command")
-            params = cmd_data.get("params", {})
-
-            if cmd == "get_ax_tree":
-                try:
-                    # AX Tree取得前に短い待機を入れて、ページの初期化を確実にする
-                    await asyncio.sleep(0.5)
-                    # ページが確実に読み込まれていることを確認
-                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+            try:
+                cmd = _cmd_queue.get(block=False)
+                command = cmd.get("command")
+                params = cmd.get("params", {})
+                
+                if command == "quit":
+                    # ブラウザ終了コマンド
+                    add_debug_log("ワーカースレッド: 終了コマンドを受け取りました")
+                    _res_queue.put({"status": "success", "message": "ブラウザを終了しました"})
+                    break
+                
+                elif command == "goto":
+                    # URLに移動
+                    url = params.get("url", "")
+                    if not url:
+                        _res_queue.put({"status": "error", "message": "URLが指定されていません"})
+                        continue
                     
-                    # AX Treeを取得
-                    ax_tree = await page.accessibility.snapshot(root=None, interesting_only=False)
-                    if ax_tree is None:
-                        add_debug_log("AxTree取得結果がNoneでした")
-                        _res_queue.put({"status": "success", "ax_tree": None, "message": "AxTreeが取得できませんでした"})
-                    else:
-                        add_debug_log("AxTree取得成功")
-                        _res_queue.put({"status": "success", "ax_tree": ax_tree})
-                except Exception as e:
-                    add_debug_log(f"AxTree取得エラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "navigate":
-                url = params.get("url", "")
-                try:
-                    # タイムアウトを増やし、待機条件を厳格化して安定性を向上
-                    response = await page.goto(url, wait_until="networkidle", timeout=30000)
-                    add_debug_log(f"ワーカースレッド: {url} に移動しました")
-                    
-                    # 成功した場合でもページの初期化を確実にするため短い待機
-                    await asyncio.sleep(1.0)
-                    
-                    _res_queue.put({"status": "success", "url": response.url if response else url})
-                except Exception as e:
-                    add_debug_log(f"navigateエラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "click_element":
-                role = params.get("role")
-                name = params.get("name")
-                try:
-                    locator = page.get_by_role(role, name=name)
-                    # 操作前に要素が存在することを確認し、タイムアウト設定を増加
-                    await locator.wait_for(state="visible", timeout=5000)
-                    await locator.click(timeout=10000)
-                    add_debug_log(f"ワーカースレッド: {role} '{name}' をクリックしました")
-                    
-                    # クリック後にDOMの更新を待機
+                    add_debug_log(f"ワーカースレッド: URL移動 {url}")
                     try:
-                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
-                    except Exception as wait_error:
-                        add_debug_log(f"クリック後のDOM更新待機中にエラー（無視）: {wait_error}")
-                    
-                    _res_queue.put({"status": "success"})
-                except Exception as e:
-                    add_debug_log(f"click_elementエラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "input_text":
-                role = params.get("role")
-                name = params.get("name")
-                text = params.get("text")
-                try:
-                    locator = page.get_by_role(role, name=name)
-                    # 操作前に要素が存在することを確認し、タイムアウト設定を増加
-                    await locator.wait_for(state="visible", timeout=5000)
-                    await locator.fill(text, timeout=10000)
-                    await locator.press("Enter", timeout=5000)
-                    add_debug_log(f"ワーカースレッド: {role} '{name}' に '{text}' を入力しました")
-                    
-                    # Enter押下後にDOMの更新を待機
+                        response = await page.goto(url, wait_until="networkidle", timeout=30000)
+                        _res_queue.put({
+                            "status": "success", 
+                            "message": f"ページに移動: {url}",
+                            "response_status": response.status if response else None
+                        })
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: URL移動エラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"URL移動エラー: {e}"})
+                
+                elif command == "get_aria_snapshot":
+                    # ページのARIA Snapshotを取得
+                    add_debug_log("ワーカースレッド: ARIA Snapshot取得")
                     try:
-                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
-                    except Exception as wait_error:
-                        add_debug_log(f"入力後のDOM更新待機中にエラー（無視）: {wait_error}")
+                        # aria-snapshotを取得
+                        aria_snapshot = await page.evaluate("""() => {
+                            const snapshotResult = [];
+                            
+                            // ドキュメント内のすべての対話可能な要素を取得
+                            const interactiveElements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="textbox"], [role="searchbox"]');
+                            
+                            // 一意のrefIDを生成するためのカウンター
+                            let refIdCounter = 1;
+                            
+                            interactiveElements.forEach(element => {
+                                // 要素のロールを判断
+                                let role = element.getAttribute('role');
+                                if (!role) {
+                                    // HTMLタグに基づいてロールを推定
+                                    switch (element.tagName.toLowerCase()) {
+                                        case 'button': role = 'button'; break;
+                                        case 'a': role = 'link'; break;
+                                        case 'input':
+                                            switch (element.type) {
+                                                case 'text': role = 'textbox'; break;
+                                                case 'checkbox': role = 'checkbox'; break;
+                                                case 'radio': role = 'radio'; break;
+                                                case 'search': role = 'searchbox'; break;
+                                                default: role = element.type; break;
+                                            }
+                                            break;
+                                        case 'select': role = 'combobox'; break;
+                                        case 'textarea': role = 'textbox'; break;
+                                        default: role = 'unknown'; break;
+                                    }
+                                }
+                                
+                                // 要素のテキスト内容やラベル、名前を取得
+                                let name = '';
+                                
+                                // aria-labelやaria-labelledbyを優先
+                                if (element.hasAttribute('aria-label')) {
+                                    name = element.getAttribute('aria-label');
+                                } else if (element.hasAttribute('aria-labelledby')) {
+                                    const labelledById = element.getAttribute('aria-labelledby');
+                                    const labelElement = document.getElementById(labelledById);
+                                    if (labelElement) {
+                                        name = labelElement.textContent.trim();
+                                    }
+                                } else if (element.hasAttribute('placeholder')) {
+                                    name = element.getAttribute('placeholder');
+                                } else if (element.hasAttribute('name')) {
+                                    name = element.getAttribute('name');
+                                } else if (element.hasAttribute('title')) {
+                                    name = element.getAttribute('title');
+                                } else if (element.hasAttribute('alt')) {
+                                    name = element.getAttribute('alt');
+                                } else {
+                                    // テキストコンテンツを取得
+                                    name = element.textContent.trim();
+                                    
+                                    // 入力要素の場合、関連するラベルを探す
+                                    if (element.tagName.toLowerCase() === 'input' && element.id) {
+                                        const labels = document.querySelectorAll(`label[for="${element.id}"]`);
+                                        if (labels.length > 0) {
+                                            name = labels[0].textContent.trim();
+                                        }
+                                    }
+                                }
+                                
+                                // 特定の属性から値を取得
+                                let value = '';
+                                if (element.tagName.toLowerCase() === 'input' || element.tagName.toLowerCase() === 'textarea') {
+                                    value = element.value;
+                                }
+                                
+                                // 一意のref-idを生成
+                                const refId = `ref-${refIdCounter++}`;
+                                
+                                // 要素にカスタムデータ属性としてref-idを付与
+                                element.setAttribute('data-ref-id', refId);
+                                
+                                // 要素の可視性をチェック
+                                const rect = element.getBoundingClientRect();
+                                const isVisible = rect.width > 0 && rect.height > 0 && 
+                                                 window.getComputedStyle(element).visibility !== 'hidden' &&
+                                                 window.getComputedStyle(element).display !== 'none';
+                                
+                                // スナップショットに追加
+                                if (isVisible) {
+                                    snapshotResult.push({
+                                        role: role,
+                                        name: name,
+                                        value: value,
+                                        ref_id: refId,
+                                        tag: element.tagName.toLowerCase(),
+                                        isEnabled: !element.disabled,
+                                        hasChildren: element.children.length > 0,
+                                        attributes: Object.fromEntries(
+                                            Array.from(element.attributes)
+                                                .filter(attr => !attr.name.startsWith('data-ref-id'))
+                                                .map(attr => [attr.name, attr.value])
+                                        )
+                                    });
+                                }
+                            });
+                            
+                            return snapshotResult;
+                        }""")
+                        
+                        _res_queue.put({
+                            "status": "success", 
+                            "message": "ARIA Snapshot取得成功",
+                            "aria_snapshot": aria_snapshot
+                        })
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: ARIA Snapshot取得エラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"ARIA Snapshot取得エラー: {e}"})
+                
+                elif command == "click_element":
+                    # ref_id、またはroleとnameで要素を特定してクリック
+                    add_debug_log(f"ワーカースレッド: 要素クリック: {params}")
+                    try:
+                        if "ref_id" in params:
+                            # ref_idを使用して要素を見つける
+                            ref_id = params["ref_id"]
+                            await page.click(f"[data-ref-id='{ref_id}']")
+                            _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素をクリックしました"})
+                        else:
+                            # roleとnameで要素を特定
+                            role = params.get("role", "")
+                            name = params.get("name", "")
+                            
+                            if role and name:
+                                # getByRoleを使用
+                                await page.get_by_role(role, name=name).click()
+                                _res_queue.put({"status": "success", "message": f"role={role}, name={name}の要素をクリックしました"})
+                            elif role:
+                                # roleのみで検索
+                                await page.get_by_role(role).first.click()
+                                _res_queue.put({"status": "success", "message": f"role={role}の要素をクリックしました"})
+                            elif name:
+                                # テキストで検索
+                                await page.get_by_text(name).click()
+                                _res_queue.put({"status": "success", "message": f"text={name}の要素をクリックしました"})
+                            else:
+                                _res_queue.put({"status": "error", "message": "要素を特定するためのパラメータが不足しています"})
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: 要素クリックエラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"要素クリックエラー: {e}"})
+                
+                elif command == "input_text":
+                    # テキスト入力
+                    add_debug_log(f"ワーカースレッド: テキスト入力: {params}")
+                    text = params.get("text", "")
+                    if not text:
+                        _res_queue.put({"status": "error", "message": "入力するテキストが指定されていません"})
+                        continue
                     
-                    _res_queue.put({"status": "success"})
-                except Exception as e:
-                    add_debug_log(f"input_textエラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "execute_javascript":
-                script = params.get("script", "")
+                    try:
+                        if "ref_id" in params:
+                            # ref_idを使用して要素を見つける
+                            ref_id = params["ref_id"]
+                            selector = f"[data-ref-id='{ref_id}']"
+                            # クリアしてから入力
+                            await page.fill(selector, "")
+                            await page.fill(selector, text)
+                            await page.press(selector, "Enter")
+                            _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素にテキスト '{text}' を入力しました"})
+                        else:
+                            # roleとnameで要素を特定
+                            role = params.get("role", "")
+                            name = params.get("name", "")
+                            
+                            if role and name:
+                                # getByRoleを使用
+                                element = page.get_by_role(role, name=name)
+                                await element.fill("")
+                                await element.fill(text)
+                                await element.press("Enter")
+                                _res_queue.put({"status": "success", "message": f"role={role}, name={name}の要素にテキスト '{text}' を入力しました"})
+                            elif role:
+                                # roleのみで検索
+                                element = page.get_by_role(role).first
+                                await element.fill("")
+                                await element.fill(text)
+                                await element.press("Enter")
+                                _res_queue.put({"status": "success", "message": f"role={role}の要素にテキスト '{text}' を入力しました"})
+                            elif name:
+                                # プレースホルダーまたはラベルで検索
+                                try:
+                                    element = page.get_by_placeholder(name)
+                                    await element.fill("")
+                                    await element.fill(text)
+                                    await element.press("Enter")
+                                    _res_queue.put({"status": "success", "message": f"placeholder={name}の要素にテキスト '{text}' を入力しました"})
+                                except:
+                                    element = page.get_by_label(name)
+                                    await element.fill("")
+                                    await element.fill(text)
+                                    await element.press("Enter")
+                                    _res_queue.put({"status": "success", "message": f"label={name}の要素にテキスト '{text}' を入力しました"})
+                            else:
+                                _res_queue.put({"status": "error", "message": "要素を特定するためのパラメータが不足しています"})
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: テキスト入力エラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"テキスト入力エラー: {e}"})
+                
+                elif command == "get_current_url":
+                    # 現在のURLを取得
+                    add_debug_log("ワーカースレッド: 現在のURL取得")
+                    try:
+                        url = page.url
+                        _res_queue.put({"status": "success", "url": url})
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: URL取得エラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"URL取得エラー: {e}"})
+                
+                elif command == "save_cookies":
+                    # Cookieを保存
+                    add_debug_log("ワーカースレッド: Cookie保存")
+                    try:
+                        cookies = await context.get_cookies()
+                        with open(_COOKIE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(cookies, f, ensure_ascii=False, indent=2)
+                        _res_queue.put({"status": "success", "message": f"{len(cookies)}件のCookieを保存しました"})
+                    except Exception as e:
+                        add_debug_log(f"ワーカースレッド: Cookie保存エラー: {e}")
+                        _res_queue.put({"status": "error", "message": f"Cookie保存エラー: {e}"})
+                
+                else:
+                    # 未知のコマンド
+                    add_debug_log(f"ワーカースレッド: 未知のコマンド: {command}")
+                    _res_queue.put({"status": "error", "message": f"未知のコマンド: {command}"})
+            
+            except queue.Empty:
+                # コマンドがない場合は少し待機
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                # その他の例外
+                add_debug_log(f"ワーカースレッド: 予期せぬエラー: {e}")
                 try:
-                    result = await page.evaluate(script)
-                    add_debug_log("ワーカースレッド: JavaScript を実行しました")
-                    _res_queue.put({"status": "success", "result": result})
-                except Exception as e:
-                    add_debug_log(f"execute_javascriptエラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "screenshot":
-                try:
-                    data = await page.screenshot(type="png", full_page=True)
-                    import base64
-                    encoded = base64.b64encode(data).decode("utf-8")
-                    add_debug_log("ワーカースレッド: スクリーンショットを撮影しました")
-                    _res_queue.put({"status": "success", "data": encoded})
-                except Exception as e:
-                    add_debug_log(f"screenshotエラー: {e}")
-                    _res_queue.put({"status": "error", "message": str(e)})
-
-            elif cmd == "exit":
-                add_debug_log("ワーカースレッド: exit コマンド受信、終了します")
-                break
-
-            else:
-                add_debug_log(f"ワーカースレッド: 不明なコマンド '{cmd}'")
-                _res_queue.put({"status": "error", "message": f"不明なコマンド: {cmd}"})
+                    _res_queue.put({"status": "error", "message": f"予期せぬエラー: {e}"})
+                except:
+                    pass
 
     finally:
-        # コンテキスト終了前にクッキーを保存
+        # 終了処理
+        add_debug_log("ワーカースレッド: 終了処理")
         try:
-            await ctx.save_cookies()
-        except Exception:
-            pass
-        await ctx.close()
-        await browser_factory.close()
-        add_debug_log("ワーカースレッド: 終了しました")
+            if browser:
+                await browser.close()
+        except Exception as e:
+            add_debug_log(f"ワーカースレッド: 終了処理エラー: {e}")
 
 
-def _browser_worker():
+def _worker_thread():
+    """ブラウザワーカーのメインスレッド処理"""
+    add_debug_log("ワーカースレッド: スレッド開始")
     asyncio.run(_async_worker())
+    add_debug_log("ワーカースレッド: スレッド終了")
 
 
 def initialize_browser():
-    """ワーカースレッドを起動または再起動します"""
+    """ブラウザワーカースレッドを初期化して開始します"""
     global _thread_started, _browser_thread
-    add_debug_log("initialize_browser: バックブラウザワーカー起動要求")
-    if _browser_thread is None or not _browser_thread.is_alive():
-        t = threading.Thread(target=_browser_worker, daemon=True)
-        t.start()
-        _browser_thread = t
-        _thread_started = True
-        time.sleep(2)
-        add_debug_log("initialize_browser: ワーカースレッド起動完了")
-        return {"status": "success", "message": "バックブラウザワーカースレッドを起動しました"}
-    add_debug_log("initialize_browser: ワーカースレッドは既に起動済み")
-    return {"status": "success", "message": "ブラウザは既に初期化されています"}
+    
+    if _thread_started:
+        add_debug_log("initialize_browser: すでにスレッドが開始されています")
+        return {"status": "success", "message": "ブラウザワーカーはすでに初期化されています"}
+    
+    add_debug_log("initialize_browser: ブラウザワーカースレッドを開始")
+    _browser_thread = threading.Thread(target=_worker_thread, daemon=True)
+    _browser_thread.start()
+    _thread_started = True
+    
+    # ブラウザが起動するまで少し待機
+    time.sleep(2.0)
+    add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
+    
+    return {"status": "success", "message": "ブラウザワーカーを初期化しました"}
 
 
 def _ensure_worker_initialized():
-    """ワーカースレッドが起動済みか確認し、未起動なら初期化します"""
-    global _thread_started, _browser_thread
-    if not _thread_started or _browser_thread is None or not _browser_thread.is_alive():
+    """ワーカースレッドが初期化されていることを確認します"""
+    if not _thread_started:
         return initialize_browser()
-    return {"status": "success"} 
+    return {"status": "success", "message": "ブラウザワーカーは既に初期化されています"} 

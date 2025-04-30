@@ -29,10 +29,10 @@ browser-agent/
 ```
 
 ## 機能
-- Webブラウザの自動操作
+- Webブラウザの自動操作（CAPTCHAブロックの回避機能付き）
 - コマンドラインからの自然言語指示による操作
 - 検索、クリック、フォーム入力などの基本的なブラウザ操作
-- 操作実行後の自動AX Tree取得と結果への含有
+- 操作実行後の自動ARIA Snapshot取得と結果への含有
 - 操作実行時のデバッグログ出力
 - Converse API を利用したツール呼び出しと応答生成
 
@@ -64,7 +64,7 @@ python main.py
 # (必要に応じて main.py の run_cli_mode 関数内のパラメータを編集してください)
 ```
 
-デフォルトでは、`main.py` 内の `run_cli_mode` 関数で定義された固定クエリ (`東京の現在の天気を教えてください。`) が実行されます。異なる操作を行いたい場合は、`main.py` の `query` 変数を直接編集してください。
+デフォルトでは、`main.py` 内の `run_cli_mode` 関数で定義された固定クエリが実行されます。異なる操作を行いたい場合は、`main.py` の `query` 変数を直接編集してください。
 
 デバッグモードを有効にするには、`main.py` 内の `debug` 変数を `True` に設定します。
 
@@ -91,12 +91,13 @@ python -m unittest tests.test_cli
 
 ## 技術仕様
 - Playwright: ブラウザ自動化
+- browser-use: 高度なブラウザ検出回避機能（Google reCAPTCHA対策）
 - Amazon Bedrock: AI応答生成
 - Claude 3 Sonnet (例): メインモデル
 - Python: 開発言語
 - **ツール**: 
-    - `click_element`: `role` が `button` または `link` の要素をクリックします。
-    - `input_text`: `role` が `combobox` の要素にテキストを入力しEnterを押します。
+    - `click_element`: `role` が `button` または `link` の要素をクリックします。ref_idによる指定も可能です。
+    - `input_text`: `role` が `combobox` の要素にテキストを入力しEnterを押します。ref_idによる指定も可能です。
 
 ## 注意事項
 
@@ -111,22 +112,25 @@ python -m unittest tests.test_cli
 
 - **コマンドラインからの自然言語指示**: `main.py` 内で定義された指示に基づいてブラウザを操作
 - **段階的な操作実行**: 複雑なタスクを小さなステップに分解して実行
-- **自動AX Tree取得**: 操作実行後に自動的に最新のページ状態（フィルタリング済みAX Tree）を取得し、レスポンスに含める（成功時も失敗時も）
-- **エラー回復機能**: 操作に失敗した場合、エラーメッセージと最新のAX Treeを出力
+- **自動ARIA Snapshot取得**: 操作実行後に自動的に最新のページ状態（ARIA Snapshot）を取得し、レスポンスに含める（成功時も失敗時も）
+- **エラー回復機能**: 操作に失敗した場合、エラーメッセージと最新のARIA Snapshotを出力
 - **詳細なデバッグログ**: 各関数の処理内容や状態をコンソールで確認可能なログ表示機能
+- **ref-id機能**: 要素を一意に特定できる参照IDによる要素操作が可能
+- **検出回避機能**: Google reCAPTCHAなどのボット検出を回避する機能を内蔵
 
 ## 技術スタック
 
 - **AIモデル**: Amazon Bedrock (Claude 3 Sonnet など)
-- **ブラウザ制御**: Playwright を利用したワーカースレッド
+- **ブラウザ制御**: Playwright と browser-use を利用したワーカースレッド
 - **開発言語**: Python
 
 ## 主な機能
 
-1. **ページ内容取得 (フィルタリング済み AX Tree)**: Webページの主要なインタラクティブ要素（button, link, combobox）の情報を取得 (内部処理、ツール実行後に自動取得)
-2. **要素クリック (`click_element`)**: AX Tree を基に `role` (`button` または `link`) と `name` で指定された要素をクリックし、実行後の最新AX Treeを取得
-3. **テキスト入力 (`input_text`)**: AX Tree を基に `role` (`combobox`) と `name` で指定された要素にテキストを入力してEnterを押し、実行後の最新AX Treeを取得
+1. **ページ内容取得 (ARIA Snapshot)**: Webページの主要なインタラクティブ要素（button, link, combobox）の情報を取得 (内部処理、ツール実行後に自動取得)
+2. **要素クリック (`click_element`)**: ARIA Snapshot を基に `role` (`button` または `link`) と `name` または `ref_id` で指定された要素をクリックし、実行後の最新ARIA Snapshotを取得
+3. **テキスト入力 (`input_text`)**: ARIA Snapshot を基に `role` (`combobox`) と `name` または `ref_id` で指定された要素にテキストを入力してEnterを押し、実行後の最新ARIA Snapshotを取得
 4. **ページ移動**: 指定URLへの移動 (内部処理、または将来的なツール追加が必要)
+5. **ボット検出回避**: browser-useライブラリを使用してreCAPTCHA等のボット検出を回避
 
 ## セットアップ方法
 
@@ -146,6 +150,7 @@ python -m unittest tests.test_cli
 2. 依存パッケージのインストール
    ```
    pip install -r requirements.txt
+   playwright install chromium
    ```
 
 3. AWS認証情報の設定
@@ -200,12 +205,16 @@ add_debug_log(data, "グループ名")
 - Amazon Bedrockの使用にはAWSアカウントと適切な権限が必要です。
 - 複雑なJavaScriptを使用したサイトでは一部機能が制限される場合があります。
 
-## 変更履歴 (簡易)
-- YYYY-MM-DD: ツール実行失敗時にもAX Treeを取得し結果に含めるように変更。
+## 変更履歴
+
+- 2024-XX-XX: browser-useライブラリを導入し、Google reCAPTCHA回避機能を追加
+- 2024-XX-XX: AX TreeからARIA Snapshotへの移行を実施。要素操作の柔軟性と安定性が向上
+- 2024-XX-XX: ref-id機能を追加。要素を一意に特定できる参照IDを使用した操作が可能に
+- YYYY-MM-DD: ツール実行失敗時にもARIA Snapshotを取得し結果に含めるように変更。
 - YYYY-MM-DD: `click_element` の `role` を `button`, `link` に限定。
 - YYYY-MM-DD: `input_text` の `role` を `combobox` に限定。
-- 2024-0X-XX: ツール実行後の自動AX Tree取得機能を追加。ツール応答のJSON内に最新ページ状態が含まれるよう改善。
-- 2024-0X-XX: 内部的なBedrock APIリクエスト形式を調整し、ツール実行結果とAX Tree情報の送信方法を改善。
+- 2024-0X-XX: ツール実行後の自動ARIA Snapshot取得機能を追加。ツール応答のJSON内に最新ページ状態が含まれるよう改善。
+- 2024-0X-XX: 内部的なBedrock APIリクエスト形式を調整し、ツール実行結果とARIA Snapshot情報の送信方法を改善。
 
 ## ライセンス
 
