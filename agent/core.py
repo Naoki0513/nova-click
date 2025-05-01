@@ -37,26 +37,17 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "ARIA Snapshotから正確な role (`button` または `link`) と name を特定してから使用してください。指定された要素をクリックします。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから要素の ref_id を特定してから使用してください。指定された参照IDを持つ要素をクリックします。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
-                            "role": {
-                                "type": "string",
-                                "enum": ["button", "link"],
-                                "description": "クリックする要素のロール。button または link のみ指定可能です。"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "クリックする要素のアクセシビリティ名（ARIA Snapshotで確認）"
-                            },
                             "ref_id": {
                                 "type": "string",
                                 "description": "クリックする要素の参照ID（ARIA Snapshotで確認）"
                             }
                         },
-                        "required": ["role", "name"]
+                        "required": ["ref_id"]
                     }
                 }
             }
@@ -64,20 +55,11 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "ARIA Snapshotから正確な role (`combobox`) と name を特定してから使用してください。指定された要素にテキストを入力し、Enterキーを押します。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから要素の ref_id を特定してから使用してください。指定された参照IDを持つ要素にテキストを入力し、Enterキーを押します。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
-                            "role": {
-                                "type": "string",
-                                "enum": ["combobox"],
-                                "description": "テキストを入力する要素のロール。combobox のみ指定可能です。"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "テキストを入力する要素のアクセシビリティ名（ARIA Snapshotで確認）"
-                            },
                             "text": {
                                 "type": "string",
                                 "description": "入力するテキスト"
@@ -87,7 +69,7 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
                                 "description": "テキストを入力する要素の参照ID（ARIA Snapshotで確認）"
                             }
                         },
-                        "required": ["role", "name", "text"]
+                        "required": ["text", "ref_id"]
                     }
                 }
             }

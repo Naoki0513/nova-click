@@ -17,7 +17,7 @@ def run_cli_mode() -> int:
 
     # --- ここで実行パラメータを設定 --- +
     query = "amazonで佐藤のごはんをカートに入れて購入までして" # 固定のクエリ
-    model_id = "us.amazon.nova-pro-v1:0"
+    model_id = "us.amazon.nova-premier-v1:0"
     credentials_path = "credentials/aws_credentials.json"
     debug = True # デバッグモードを無効にする場合は False
     # ------------------------------------ +

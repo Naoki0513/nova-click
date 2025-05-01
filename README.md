@@ -95,9 +95,9 @@ python -m unittest tests.test_cli
 - Amazon Bedrock: AI応答生成
 - Claude 3 Sonnet (例): メインモデル
 - Python: 開発言語
-- **ツール**: 
-    - `click_element`: `role` が `button` または `link` の要素をクリックします。ref_idによる指定も可能です。
-    - `input_text`: `role` が `combobox` の要素にテキストを入力しEnterを押します。ref_idによる指定も可能です。
+- **ツール**:
+    - `click_element`: 指定された `ref_id` を持つ要素をクリックします。
+    - `input_text`: 指定された `ref_id` を持つ入力要素に指定された `text` を入力し、Enterキーを押します。
 
 ## 注意事項
 
@@ -115,7 +115,7 @@ python -m unittest tests.test_cli
 - **自動ARIA Snapshot取得**: 操作実行後に自動的に最新のページ状態（ARIA Snapshot）を取得し、レスポンスに含める（成功時も失敗時も）
 - **エラー回復機能**: 操作に失敗した場合、エラーメッセージと最新のARIA Snapshotを出力
 - **詳細なデバッグログ**: 各関数の処理内容や状態をコンソールで確認可能なログ表示機能
-- **ref-id機能**: 要素を一意に特定できる参照IDによる要素操作が可能
+- **ref_idによる要素特定**: 要素を一意に特定できる参照ID (`ref_id`) による要素操作
 - **検出回避機能**: Google reCAPTCHAなどのボット検出を回避する機能を内蔵
 
 ## 技術スタック
@@ -127,8 +127,8 @@ python -m unittest tests.test_cli
 ## 主な機能
 
 1. **ページ内容取得 (ARIA Snapshot)**: Webページの主要なインタラクティブ要素（button, link, combobox）の情報を取得 (内部処理、ツール実行後に自動取得)
-2. **要素クリック (`click_element`)**: ARIA Snapshot を基に `role` (`button` または `link`) と `name` または `ref_id` で指定された要素をクリックし、実行後の最新ARIA Snapshotを取得
-3. **テキスト入力 (`input_text`)**: ARIA Snapshot を基に `role` (`combobox`) と `name` または `ref_id` で指定された要素にテキストを入力してEnterを押し、実行後の最新ARIA Snapshotを取得
+2. **要素クリック (`click_element`)**: ARIA Snapshot を基に `ref_id` で指定された要素をクリックし、実行後の最新ARIA Snapshotを取得
+3. **テキスト入力 (`input_text`)**: ARIA Snapshot を基に `ref_id` で指定された要素にテキストを入力してEnterを押し、実行後の最新ARIA Snapshotを取得
 4. **ページ移動**: 指定URLへの移動 (内部処理、または将来的なツール追加が必要)
 5. **ボット検出回避**: browser-useライブラリを使用してreCAPTCHA等のボット検出を回避
 
@@ -210,11 +210,10 @@ add_debug_log(data, "グループ名")
 - 2024-XX-XX: browser-useライブラリを導入し、Google reCAPTCHA回避機能を追加
 - 2024-XX-XX: AX TreeからARIA Snapshotへの移行を実施。要素操作の柔軟性と安定性が向上
 - 2024-XX-XX: ref-id機能を追加。要素を一意に特定できる参照IDを使用した操作が可能に
+- {datetime.datetime.now().strftime("%Y-%m-%d")}: ツール (`click_element`, `input_text`) の要素特定方法を `ref_id` のみに変更。ARIA Snapshotの取得情報も `role`, `name`, `ref_id` に限定。
 - YYYY-MM-DD: ツール実行失敗時にもARIA Snapshotを取得し結果に含めるように変更。
 - YYYY-MM-DD: `click_element` の `role` を `button`, `link` に限定。
 - YYYY-MM-DD: `input_text` の `role` を `combobox` に限定。
-- 2024-0X-XX: ツール実行後の自動ARIA Snapshot取得機能を追加。ツール応答のJSON内に最新ページ状態が含まれるよう改善。
-- 2024-0X-XX: 内部的なBedrock APIリクエスト形式を調整し、ツール実行結果とARIA Snapshot情報の送信方法を改善。
 
 ## ライセンス
 

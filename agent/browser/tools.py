@@ -58,30 +58,23 @@ def goto_url(url: str) -> Dict[str, Any]:
         return {'status': 'error', 'message': 'タイムアウト'}
 
 
-def click_element(role: str = None, name: str = None, ref_id: str = None) -> Dict[str, Any]:
-    """指定した要素をクリックします。
+def click_element(ref_id: str) -> Dict[str, Any]:
+    """指定した要素 (ref_idで特定) をクリックします。
     
     Args:
-        role: 要素のロール名 (button, link など)
-        name: 要素のテキスト内容やラベル
         ref_id: 要素の参照ID (get_aria_snapshot で取得したもの)
     
     Returns:
         操作結果の辞書
     """
     params = {}
-    if role:
-        params['role'] = role
-    if name:
-        params['name'] = name
     if ref_id:
         params['ref_id'] = ref_id
-        
-    if not params:
-        add_debug_log("tools.click_element: パラメータが指定されていません")
-        return {'status': 'error', 'message': '要素を特定するパラメータが必要です (role, name, または ref_id)'}
+    else:
+        add_debug_log("tools.click_element: ref_idが指定されていません")
+        return {'status': 'error', 'message': '要素を特定するref_idが必要です'}
     
-    add_debug_log(f"tools.click_element: {params}の要素をクリック")
+    add_debug_log(f"tools.click_element: ref_id={ref_id}の要素をクリック")
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'click_element', 'params': params})
     
@@ -114,31 +107,24 @@ def click_element(role: str = None, name: str = None, ref_id: str = None) -> Dic
         return error_res
 
 
-def input_text(text: str, role: str = None, name: str = None, ref_id: str = None) -> Dict[str, Any]:
-    """指定した要素にテキストを入力します。
+def input_text(text: str, ref_id: str) -> Dict[str, Any]:
+    """指定した要素 (ref_idで特定) にテキストを入力します。
     
     Args:
         text: 入力するテキスト
-        role: 要素のロール名 (textbox, searchbox など)
-        name: 要素のプレースホルダーやラベル
         ref_id: 要素の参照ID (get_aria_snapshot で取得したもの)
     
     Returns:
         操作結果の辞書
     """
-    params = {'text': text}
-    if role:
-        params['role'] = role
-    if name:
-        params['name'] = name
+    params = { 'text': text }
     if ref_id:
         params['ref_id'] = ref_id
+    else:
+        add_debug_log("tools.input_text: ref_idが指定されていません")
+        return {'status': 'error', 'message': '要素を特定するref_idが必要です'}
         
-    if len(params) <= 1:
-        add_debug_log("tools.input_text: 要素特定パラメータが指定されていません")
-        return {'status': 'error', 'message': '要素を特定するパラメータが必要です (role, name, または ref_id)'}
-        
-    add_debug_log(f"tools.input_text: {params}にテキスト入力")
+    add_debug_log(f"tools.input_text: ref_id={ref_id}にテキスト '{text}' を入力")
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'input_text', 'params': params})
     
@@ -289,23 +275,17 @@ def dispatch_browser_tool(tool_name: str, params=None):
     result = None
     
     if tool_name == 'click_element':
-        if params is None:
-            result = {'status': 'error', 'message': 'パラメータが指定されていません'}
+        if params is None or 'ref_id' not in params:
+            result = {'status': 'error', 'message': 'パラメータ ref_id が指定されていません'}
         else:
-            result = click_element(
-                params.get('role', ''), 
-                params.get('name', ''), 
-                params.get('ref_id', None)
-            )
+            result = click_element(params.get('ref_id'))
     elif tool_name == 'input_text':
-        if params is None:
-            result = {'status': 'error', 'message': 'パラメータが指定されていません'}
+        if params is None or 'ref_id' not in params or 'text' not in params:
+            result = {'status': 'error', 'message': 'パラメータ text または ref_id が指定されていません'}
         else:
             result = input_text(
-                params.get('text', ''), 
-                params.get('role', ''), 
-                params.get('name', ''), 
-                params.get('ref_id', None)
+                params.get('text'), 
+                params.get('ref_id')
             )
     else:
         add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")

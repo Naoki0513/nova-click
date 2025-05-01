@@ -190,12 +190,6 @@ async def _async_worker():
                                     }
                                 }
                                 
-                                // 特定の属性から値を取得
-                                let value = '';
-                                if (element.tagName.toLowerCase() === 'input' || element.tagName.toLowerCase() === 'textarea') {
-                                    value = element.value;
-                                }
-                                
                                 // 一意のref-idを生成
                                 const refId = `ref-${refIdCounter++}`;
                                 
@@ -208,21 +202,12 @@ async def _async_worker():
                                                  window.getComputedStyle(element).visibility !== 'hidden' &&
                                                  window.getComputedStyle(element).display !== 'none';
                                 
-                                // スナップショットに追加
+                                // スナップショットに追加 (role, name, ref_id のみ)
                                 if (isVisible) {
                                     snapshotResult.push({
                                         role: role,
                                         name: name,
-                                        value: value,
-                                        ref_id: refId,
-                                        tag: element.tagName.toLowerCase(),
-                                        isEnabled: !element.disabled,
-                                        hasChildren: element.children.length > 0,
-                                        attributes: Object.fromEntries(
-                                            Array.from(element.attributes)
-                                                .filter(attr => !attr.name.startsWith('data-ref-id'))
-                                                .map(attr => [attr.name, attr.value])
-                                        )
+                                        ref_id: refId
                                     });
                                 }
                             });
@@ -236,97 +221,72 @@ async def _async_worker():
                             "aria_snapshot": aria_snapshot
                         })
                     except Exception as e:
-                        add_debug_log(f"ワーカースレッド: ARIA Snapshot取得エラー: {e}")
-                        _res_queue.put({"status": "error", "message": f"ARIA Snapshot取得エラー: {e}"})
+                        current_url = "不明"
+                        try:
+                            current_url = page.url
+                        except Exception as url_e:
+                            add_debug_log(f"ワーカースレッド: ARIA Snapshot取得エラー時のURL取得失敗: {url_e}")
+                        error_msg = f"ARIA Snapshot取得エラー: {e}"
+                        add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                        _res_queue.put({"status": "error", "message": error_msg})
                 
                 elif command == "click_element":
-                    # ref_id、またはroleとnameで要素を特定してクリック
-                    add_debug_log(f"ワーカースレッド: 要素クリック: {params}")
+                    # ref_idで要素を特定してクリック
+                    ref_id = params.get("ref_id")
+                    add_debug_log(f"ワーカースレッド: 要素クリック (ref_id): {ref_id}")
+                    if not ref_id:
+                        _res_queue.put({"status": "error", "message": "要素を特定するためのref_idが不足しています"})
+                        continue
                     try:
-                        if "ref_id" in params:
-                            # ref_idを使用して要素を見つける
-                            ref_id = params["ref_id"]
-                            await page.click(f"[data-ref-id='{ref_id}']")
-                            _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素をクリックしました"})
-                        else:
-                            # roleとnameで要素を特定
-                            role = params.get("role", "")
-                            name = params.get("name", "")
-                            
-                            if role and name:
-                                # getByRoleを使用
-                                await page.get_by_role(role, name=name).click()
-                                _res_queue.put({"status": "success", "message": f"role={role}, name={name}の要素をクリックしました"})
-                            elif role:
-                                # roleのみで検索
-                                await page.get_by_role(role).first.click()
-                                _res_queue.put({"status": "success", "message": f"role={role}の要素をクリックしました"})
-                            elif name:
-                                # テキストで検索
-                                await page.get_by_text(name).click()
-                                _res_queue.put({"status": "success", "message": f"text={name}の要素をクリックしました"})
-                            else:
-                                _res_queue.put({"status": "error", "message": "要素を特定するためのパラメータが不足しています"})
+                        selector = f"[data-ref-id='{ref_id}']"
+                        # クリック前に要素をビューポートにスクロール
+                        await page.locator(selector).scroll_into_view_if_needed(timeout=5000) # 5秒のタイムアウトを追加
+                        # 要素が表示されるまで待機する処理を削除し、直接クリックを試みる
+                        # await page.wait_for_selector(selector, state='visible', timeout=10000)
+                        await page.click(selector, timeout=10000) # クリック自体のタイムアウトも設定
+                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素をクリックしました"})
                     except Exception as e:
-                        add_debug_log(f"ワーカースレッド: 要素クリックエラー: {e}")
-                        _res_queue.put({"status": "error", "message": f"要素クリックエラー: {e}"})
+                        current_url = "不明"
+                        try:
+                            current_url = page.url
+                        except Exception as url_e:
+                            add_debug_log(f"ワーカースレッド: 要素クリックエラー時のURL取得失敗: {url_e}")
+                        error_msg = f"要素クリックエラー (ref_id={ref_id}): {e}"
+                        add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                        _res_queue.put({"status": "error", "message": error_msg})
                 
                 elif command == "input_text":
-                    # テキスト入力
-                    add_debug_log(f"ワーカースレッド: テキスト入力: {params}")
-                    text = params.get("text", "")
-                    if not text:
+                    # ref_idで要素を特定してテキスト入力
+                    text = params.get("text")
+                    ref_id = params.get("ref_id")
+                    add_debug_log(f"ワーカースレッド: テキスト入力 (ref_id={ref_id}, text='{text}')")
+
+                    if not ref_id:
+                        _res_queue.put({"status": "error", "message": "要素を特定するためのref_idが不足しています"})
+                        continue
+                    if text is None:
                         _res_queue.put({"status": "error", "message": "入力するテキストが指定されていません"})
                         continue
-                    
+
                     try:
-                        if "ref_id" in params:
-                            # ref_idを使用して要素を見つける
-                            ref_id = params["ref_id"]
-                            selector = f"[data-ref-id='{ref_id}']"
-                            # クリアしてから入力
-                            await page.fill(selector, "")
-                            await page.fill(selector, text)
-                            await page.press(selector, "Enter")
-                            _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素にテキスト '{text}' を入力しました"})
-                        else:
-                            # roleとnameで要素を特定
-                            role = params.get("role", "")
-                            name = params.get("name", "")
-                            
-                            if role and name:
-                                # getByRoleを使用
-                                element = page.get_by_role(role, name=name)
-                                await element.fill("")
-                                await element.fill(text)
-                                await element.press("Enter")
-                                _res_queue.put({"status": "success", "message": f"role={role}, name={name}の要素にテキスト '{text}' を入力しました"})
-                            elif role:
-                                # roleのみで検索
-                                element = page.get_by_role(role).first
-                                await element.fill("")
-                                await element.fill(text)
-                                await element.press("Enter")
-                                _res_queue.put({"status": "success", "message": f"role={role}の要素にテキスト '{text}' を入力しました"})
-                            elif name:
-                                # プレースホルダーまたはラベルで検索
-                                try:
-                                    element = page.get_by_placeholder(name)
-                                    await element.fill("")
-                                    await element.fill(text)
-                                    await element.press("Enter")
-                                    _res_queue.put({"status": "success", "message": f"placeholder={name}の要素にテキスト '{text}' を入力しました"})
-                                except:
-                                    element = page.get_by_label(name)
-                                    await element.fill("")
-                                    await element.fill(text)
-                                    await element.press("Enter")
-                                    _res_queue.put({"status": "success", "message": f"label={name}の要素にテキスト '{text}' を入力しました"})
-                            else:
-                                _res_queue.put({"status": "error", "message": "要素を特定するためのパラメータが不足しています"})
+                        selector = f"[data-ref-id='{ref_id}']"
+                        # 要素が表示されるまで待機する処理を削除し、直接入力を試みる
+                        # await page.wait_for_selector(selector, state='visible', timeout=10000)
+                        # await page.wait_for_selector(selector, state='editable', timeout=10000) # 'editable' は無効な state
+                        # クリアしてから入力
+                        await page.fill(selector, "", timeout=10000) # fillのタイムアウト
+                        await page.fill(selector, text, timeout=10000) # fillのタイムアウト
+                        await page.press(selector, "Enter", timeout=5000) # pressのタイムアウト
+                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素にテキスト '{text}' を入力しました"})
                     except Exception as e:
-                        add_debug_log(f"ワーカースレッド: テキスト入力エラー: {e}")
-                        _res_queue.put({"status": "error", "message": f"テキスト入力エラー: {e}"})
+                        current_url = "不明"
+                        try:
+                            current_url = page.url
+                        except Exception as url_e:
+                            add_debug_log(f"ワーカースレッド: テキスト入力エラー時のURL取得失敗: {url_e}")
+                        error_msg = f"テキスト入力エラー (ref_id={ref_id}, text='{text}'): {e}"
+                        add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                        _res_queue.put({"status": "error", "message": error_msg})
                 
                 elif command == "get_current_url":
                     # 現在のURLを取得
