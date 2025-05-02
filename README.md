@@ -214,6 +214,8 @@ add_debug_log(data, "グループ名")
 - YYYY-MM-DD: ツール実行失敗時にもARIA Snapshotを取得し結果に含めるように変更。
 - YYYY-MM-DD: `click_element` の `role` を `button`, `link` に限定。
 - YYYY-MM-DD: `input_text` の `role` を `combobox` に限定。
+- {datetime.datetime.now().strftime("%Y-%m-%d")}: 要素操作 (`click_element`, `input_text`) でPlaywright Locator APIを使用するように変更し、操作の安定性を向上。
+- {datetime.datetime.now().strftime("%Y-%m-%d")}: ARIA Snapshot取得処理 (`get_aria_snapshot`) の安定性を向上（待機処理の追加、JavaScript内のエラーハンドリング強化）。
 
 ## ライセンス
 

@@ -124,101 +124,131 @@ async def _async_worker():
                     # ページのARIA Snapshotを取得
                     add_debug_log("ワーカースレッド: ARIA Snapshot取得")
                     try:
+                        # ページのDOMが読み込まれるのを少し待つ (gotoでnetworkidleは待っているはずだが念のため)
+                        try:
+                            await page.wait_for_load_state('domcontentloaded', timeout=5000)
+                        except Exception as wait_e:
+                            add_debug_log(f"ワーカースレッド: domcontentloaded 待機中にタイムアウトまたはエラー: {wait_e}")
+                        
                         # aria-snapshotを取得
                         aria_snapshot = await page.evaluate("""() => {
                             const snapshotResult = [];
-                            
-                            // ドキュメント内のすべての対話可能な要素を取得
-                            const interactiveElements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="textbox"], [role="searchbox"]');
-                            
-                            // 一意のrefIDを生成するためのカウンター
                             let refIdCounter = 1;
+                            let errorCount = 0; // エラーカウント用
                             
-                            interactiveElements.forEach(element => {
-                                // 要素のロールを判断
-                                let role = element.getAttribute('role');
-                                if (!role) {
-                                    // HTMLタグに基づいてロールを推定
-                                    switch (element.tagName.toLowerCase()) {
-                                        case 'button': role = 'button'; break;
-                                        case 'a': role = 'link'; break;
-                                        case 'input':
-                                            switch (element.type) {
-                                                case 'text': role = 'textbox'; break;
-                                                case 'checkbox': role = 'checkbox'; break;
-                                                case 'radio': role = 'radio'; break;
-                                                case 'search': role = 'searchbox'; break;
-                                                default: role = element.type; break;
+                            try {
+                                // ドキュメント内のすべての対話可能な要素を取得
+                                const interactiveElements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="textbox"], [role="searchbox"]');
+                                
+                                interactiveElements.forEach(element => {
+                                    try { // 個々の要素処理のエラーハンドリング開始
+                                        // 要素のロールを判断
+                                        let role = element.getAttribute('role');
+                                        if (!role) {
+                                            // HTMLタグに基づいてロールを推定
+                                            switch (element.tagName.toLowerCase()) {
+                                                case 'button': role = 'button'; break;
+                                                case 'a': role = 'link'; break;
+                                                case 'input':
+                                                    switch (element.type) {
+                                                        case 'text': role = 'textbox'; break;
+                                                        case 'checkbox': role = 'checkbox'; break;
+                                                        case 'radio': role = 'radio'; break;
+                                                        case 'search': role = 'searchbox'; break;
+                                                        default: role = element.type; break;
+                                                    }
+                                                    break;
+                                                case 'select': role = 'combobox'; break;
+                                                case 'textarea': role = 'textbox'; break;
+                                                default: role = 'unknown'; break;
                                             }
-                                            break;
-                                        case 'select': role = 'combobox'; break;
-                                        case 'textarea': role = 'textbox'; break;
-                                        default: role = 'unknown'; break;
-                                    }
-                                }
-                                
-                                // 要素のテキスト内容やラベル、名前を取得
-                                let name = '';
-                                
-                                // aria-labelやaria-labelledbyを優先
-                                if (element.hasAttribute('aria-label')) {
-                                    name = element.getAttribute('aria-label');
-                                } else if (element.hasAttribute('aria-labelledby')) {
-                                    const labelledById = element.getAttribute('aria-labelledby');
-                                    const labelElement = document.getElementById(labelledById);
-                                    if (labelElement) {
-                                        name = labelElement.textContent.trim();
-                                    }
-                                } else if (element.hasAttribute('placeholder')) {
-                                    name = element.getAttribute('placeholder');
-                                } else if (element.hasAttribute('name')) {
-                                    name = element.getAttribute('name');
-                                } else if (element.hasAttribute('title')) {
-                                    name = element.getAttribute('title');
-                                } else if (element.hasAttribute('alt')) {
-                                    name = element.getAttribute('alt');
-                                } else {
-                                    // テキストコンテンツを取得
-                                    name = element.textContent.trim();
-                                    
-                                    // 入力要素の場合、関連するラベルを探す
-                                    if (element.tagName.toLowerCase() === 'input' && element.id) {
-                                        const labels = document.querySelectorAll(`label[for="${element.id}"]`);
-                                        if (labels.length > 0) {
-                                            name = labels[0].textContent.trim();
                                         }
+                                        
+                                        // 要素のテキスト内容やラベル、名前を取得
+                                        let name = '';
+                                        
+                                        // aria-labelやaria-labelledbyを優先
+                                        if (element.hasAttribute('aria-label')) {
+                                            name = element.getAttribute('aria-label');
+                                        } else if (element.hasAttribute('aria-labelledby')) {
+                                            const labelledById = element.getAttribute('aria-labelledby');
+                                            const labelElement = document.getElementById(labelledById);
+                                            if (labelElement) {
+                                                name = labelElement.textContent.trim();
+                                            }
+                                        } else if (element.hasAttribute('placeholder')) {
+                                            name = element.getAttribute('placeholder');
+                                        } else if (element.hasAttribute('name')) {
+                                            name = element.getAttribute('name');
+                                        } else if (element.hasAttribute('title')) {
+                                            name = element.getAttribute('title');
+                                        } else if (element.hasAttribute('alt')) {
+                                            name = element.getAttribute('alt');
+                                        } else {
+                                            // テキストコンテンツを取得
+                                            name = element.textContent.trim();
+                                            
+                                            // 入力要素の場合、関連するラベルを探す
+                                            if (element.tagName.toLowerCase() === 'input' && element.id) {
+                                                const labels = document.querySelectorAll(`label[for="${element.id}"]`);
+                                                if (labels.length > 0) {
+                                                    name = labels[0].textContent.trim();
+                                                }
+                                            }
+                                        }
+                                        
+                                        // 一意のref-idを生成
+                                        const refId = `ref-${refIdCounter++}`;
+                                        
+                                        // 要素にカスタムデータ属性としてref-idを付与
+                                        element.setAttribute('data-ref-id', refId);
+                                        
+                                        // 要素の可視性をチェック
+                                        const rect = element.getBoundingClientRect();
+                                        const isVisible = rect.width > 0 && rect.height > 0 && 
+                                                         window.getComputedStyle(element).visibility !== 'hidden' &&
+                                                         window.getComputedStyle(element).display !== 'none';
+                                        
+                                        // スナップショットに追加 (role, name, ref_id のみ)
+                                        // roleがunknownでなく、nameが空でも追加する（代替テキストを設定）
+                                        if (isVisible && role !== 'unknown') {
+                                            snapshotResult.push({
+                                                role: role,
+                                                name: name || 'Unnamed Element', // nameが空の場合の代替テキスト
+                                                ref_id: refId
+                                            });
+                                        }
+                                    } catch (el_error) {
+                                        // 個々の要素処理でエラーが発生しても、他の要素の処理を続ける
+                                        console.error('Error processing element:', element, el_error);
+                                        errorCount++;
                                     }
-                                }
-                                
-                                // 一意のref-idを生成
-                                const refId = `ref-${refIdCounter++}`;
-                                
-                                // 要素にカスタムデータ属性としてref-idを付与
-                                element.setAttribute('data-ref-id', refId);
-                                
-                                // 要素の可視性をチェック
-                                const rect = element.getBoundingClientRect();
-                                const isVisible = rect.width > 0 && rect.height > 0 && 
-                                                 window.getComputedStyle(element).visibility !== 'hidden' &&
-                                                 window.getComputedStyle(element).display !== 'none';
-                                
-                                // スナップショットに追加 (role, name, ref_id のみ)
-                                if (isVisible) {
-                                    snapshotResult.push({
-                                        role: role,
-                                        name: name,
-                                        ref_id: refId
-                                    });
-                                }
-                            });
+                                }); // forEach end
+                            } catch (main_error) {
+                                // querySelectorAllなどでエラーが発生した場合
+                                console.error('Error during main snapshot process:', main_error);
+                                // エラーが発生したことを示す情報を返すことも検討
+                                return { error: `Snapshot process error: ${main_error.message}`, errorCount: errorCount, snapshot: snapshotResult };
+                            }
                             
-                            return snapshotResult;
+                            // スナップショット本体とエラーカウントを返す
+                            return { snapshot: snapshotResult, errorCount: errorCount }; 
                         }""")
+                        
+                        # evaluateの結果からスナップショット本体とエラー情報を分離
+                        snapshot_data = aria_snapshot.get("snapshot", [])
+                        error_count = aria_snapshot.get("errorCount", 0)
+                        process_error = aria_snapshot.get("error", None)
+
+                        if process_error:
+                             add_debug_log(f"ワーカースレッド: JavaScript実行中にエラー発生: {process_error}")
+                        if error_count > 0:
+                            add_debug_log(f"ワーカースレッド: スナップショット取得中に {error_count} 件の要素処理エラーが発生しました。")
                         
                         _res_queue.put({
                             "status": "success", 
-                            "message": "ARIA Snapshot取得成功",
-                            "aria_snapshot": aria_snapshot
+                            "message": f"ARIA Snapshot取得成功 ({len(snapshot_data)} 要素取得、{error_count} エラー)",
+                            "aria_snapshot": snapshot_data # スナップショット本体のみを返す
                         })
                     except Exception as e:
                         current_url = "不明"
@@ -239,11 +269,9 @@ async def _async_worker():
                         continue
                     try:
                         selector = f"[data-ref-id='{ref_id}']"
-                        # クリック前に要素をビューポートにスクロール
-                        await page.locator(selector).scroll_into_view_if_needed(timeout=5000) # 5秒のタイムアウトを追加
-                        # 要素が表示されるまで待機する処理を削除し、直接クリックを試みる
-                        # await page.wait_for_selector(selector, state='visible', timeout=10000)
-                        await page.click(selector, timeout=10000) # クリック自体のタイムアウトも設定
+                        locator = page.locator(selector)
+                        # Locator API を使用してクリック。自動待機やスクロールが組み込まれている
+                        await locator.click(timeout=10000) # タイムアウトを設定
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素をクリックしました"})
                     except Exception as e:
                         current_url = "不明"
@@ -270,13 +298,12 @@ async def _async_worker():
 
                     try:
                         selector = f"[data-ref-id='{ref_id}']"
-                        # 要素が表示されるまで待機する処理を削除し、直接入力を試みる
-                        # await page.wait_for_selector(selector, state='visible', timeout=10000)
-                        # await page.wait_for_selector(selector, state='editable', timeout=10000) # 'editable' は無効な state
+                        locator = page.locator(selector)
+                        # Locator API を使用して入力。自動待機やスクロールが組み込まれている
                         # クリアしてから入力
-                        await page.fill(selector, "", timeout=10000) # fillのタイムアウト
-                        await page.fill(selector, text, timeout=10000) # fillのタイムアウト
-                        await page.press(selector, "Enter", timeout=5000) # pressのタイムアウト
+                        await locator.fill("", timeout=10000) # fillのタイムアウト
+                        await locator.fill(text, timeout=10000) # fillのタイムアウト
+                        await locator.press("Enter", timeout=5000) # pressのタイムアウト
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素にテキスト '{text}' を入力しました"})
                     except Exception as e:
                         current_url = "不明"
