@@ -37,14 +37,14 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "ARIA Snapshotから要素の ref_id を特定してから使用してください。指定された参照IDを持つ要素をクリックします。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから要素の ref_id (数値) を特定してから使用してください。指定された参照IDを持つ要素をクリックします。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
                             "ref_id": {
-                                "type": "string",
-                                "description": "クリックする要素の参照ID（ARIA Snapshotで確認）"
+                                "type": "integer",
+                                "description": "クリックする要素の参照ID（数値、ARIA Snapshotで確認）"
                             }
                         },
                         "required": ["ref_id"]
@@ -55,7 +55,7 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "ARIA Snapshotから要素の ref_id を特定してから使用してください。指定された参照IDを持つ要素にテキストを入力し、Enterキーを押します。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "ARIA Snapshotから要素の ref_id (数値) を特定してから使用してください。指定された参照IDを持つ要素にテキストを入力し、Enterキーを押します。実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
                 "inputSchema": {
                     "json": {
                         "type": "object",
@@ -65,8 +65,8 @@ def get_browser_tools_config() -> List[Dict[str, Any]]:
                                 "description": "入力するテキスト"
                             },
                             "ref_id": {
-                                "type": "string",
-                                "description": "テキストを入力する要素の参照ID（ARIA Snapshotで確認）"
+                                "type": "integer",
+                                "description": "テキストを入力する要素の参照ID（数値、ARIA Snapshotで確認）"
                             }
                         },
                         "required": ["text", "ref_id"]

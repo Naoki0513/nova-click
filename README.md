@@ -96,8 +96,8 @@ python -m unittest tests.test_cli
 - Claude 3 Sonnet (例): メインモデル
 - Python: 開発言語
 - **ツール**:
-    - `click_element`: 指定された `ref_id` を持つ要素をクリックします。
-    - `input_text`: 指定された `ref_id` を持つ入力要素に指定された `text` を入力し、Enterキーを押します。
+    - `click_element`: 指定された `ref_id` (数値) を持つ要素をクリックします。
+    - `input_text`: 指定された `ref_id` (数値) を持つ入力要素に指定された `text` を入力し、Enterキーを押します。
 
 ## 注意事項
 
@@ -112,10 +112,10 @@ python -m unittest tests.test_cli
 
 - **コマンドラインからの自然言語指示**: `main.py` 内で定義された指示に基づいてブラウザを操作
 - **段階的な操作実行**: 複雑なタスクを小さなステップに分解して実行
-- **自動ARIA Snapshot取得**: 操作実行後に自動的に最新のページ状態（ARIA Snapshot）を取得し、レスポンスに含める（成功時も失敗時も）
+- **自動ARIA Snapshot取得**: 操作実行後に自動的に最新のページ状態（ARIA Snapshot, `ref_id`は数値）を取得し、レスポンスに含める（成功時も失敗時も）
 - **エラー回復機能**: 操作に失敗した場合、エラーメッセージと最新のARIA Snapshotを出力
 - **詳細なデバッグログ**: 各関数の処理内容や状態をコンソールで確認可能なログ表示機能
-- **ref_idによる要素特定**: 要素を一意に特定できる参照ID (`ref_id`) による要素操作
+- **`ref_id`による要素特定**: 要素を一意に特定できる数値の参照ID (`ref_id`) による要素操作
 - **検出回避機能**: Google reCAPTCHAなどのボット検出を回避する機能を内蔵
 
 ## 技術スタック
@@ -126,9 +126,9 @@ python -m unittest tests.test_cli
 
 ## 主な機能
 
-1. **ページ内容取得 (ARIA Snapshot)**: Webページの主要なインタラクティブ要素（button, link, combobox）の情報を取得 (内部処理、ツール実行後に自動取得)
-2. **要素クリック (`click_element`)**: ARIA Snapshot を基に `ref_id` で指定された要素をクリックし、実行後の最新ARIA Snapshotを取得
-3. **テキスト入力 (`input_text`)**: ARIA Snapshot を基に `ref_id` で指定された要素にテキストを入力してEnterを押し、実行後の最新ARIA Snapshotを取得
+1. **ページ内容取得 (ARIA Snapshot)**: Webページの主要なインタラクティブ要素（button, link, comboboxなど）の情報（`role`, `name`, `ref_id`(数値)）を取得 (内部処理、ツール実行後に自動取得)
+2. **要素クリック (`click_element`)**: ARIA Snapshot を基に `ref_id` (数値) で指定された要素をクリックし、実行後の最新ARIA Snapshotを取得
+3. **テキスト入力 (`input_text`)**: ARIA Snapshot を基に `ref_id` (数値) で指定された要素にテキストを入力してEnterを押し、実行後の最新ARIA Snapshotを取得
 4. **ページ移動**: 指定URLへの移動 (内部処理、または将来的なツール追加が必要)
 5. **ボット検出回避**: browser-useライブラリを使用してreCAPTCHA等のボット検出を回避
 
@@ -216,6 +216,7 @@ add_debug_log(data, "グループ名")
 - YYYY-MM-DD: `input_text` の `role` を `combobox` に限定。
 - {datetime.datetime.now().strftime("%Y-%m-%d")}: 要素操作 (`click_element`, `input_text`) でPlaywright Locator APIを使用するように変更し、操作の安定性を向上。
 - {datetime.datetime.now().strftime("%Y-%m-%d")}: ARIA Snapshot取得処理 (`get_aria_snapshot`) の安定性を向上（待機処理の追加、JavaScript内のエラーハンドリング強化）。
+- {datetime.datetime.now().strftime("%Y-%m-%d")}: ARIA Snapshotで返す `ref_id` を数値に変更。ツール (`click_element`, `input_text`) の入力スキーマも `ref_id` が数値を受け付けるように変更し、内部で `"ref-{数字}"` 形式のセレクタを使用するように修正。
 
 ## ライセンス
 

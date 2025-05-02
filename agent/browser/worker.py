@@ -197,11 +197,12 @@ async def _async_worker():
                                             }
                                         }
                                         
-                                        // 一意のref-idを生成
-                                        const refId = `ref-${refIdCounter++}`;
+                                        // 一意のref-idを生成（数値）と属性用文字列
+                                        const refIdValue = refIdCounter++;
+                                        const refIdAttr = `ref-${refIdValue}`;
                                         
-                                        // 要素にカスタムデータ属性としてref-idを付与
-                                        element.setAttribute('data-ref-id', refId);
+                                        // 要素にカスタムデータ属性としてref-idを付与 (ref-{数字} 形式)
+                                        element.setAttribute('data-ref-id', refIdAttr);
                                         
                                         // 要素の可視性をチェック
                                         const rect = element.getBoundingClientRect();
@@ -215,7 +216,7 @@ async def _async_worker():
                                             snapshotResult.push({
                                                 role: role,
                                                 name: name || 'Unnamed Element', // nameが空の場合の代替テキスト
-                                                ref_id: refId
+                                                ref_id: refIdValue // 数値のref_idを返す
                                             });
                                         }
                                     } catch (el_error) {
@@ -262,34 +263,35 @@ async def _async_worker():
                 
                 elif command == "click_element":
                     # ref_idで要素を特定してクリック
-                    ref_id = params.get("ref_id")
+                    ref_id = params.get("ref_id") # 数値で受け取る
                     add_debug_log(f"ワーカースレッド: 要素クリック (ref_id): {ref_id}")
-                    if not ref_id:
+                    if ref_id is None: # 数値なので None チェック
                         _res_queue.put({"status": "error", "message": "要素を特定するためのref_idが不足しています"})
                         continue
                     try:
-                        selector = f"[data-ref-id='{ref_id}']"
+                        selector = f"[data-ref-id='ref-{ref_id}']" # セレクタ構築時に "ref-" を付加
+                        add_debug_log(f"ワーカースレッド: クリック対象セレクタ: {selector}")
                         locator = page.locator(selector)
                         # Locator API を使用してクリック。自動待機やスクロールが組み込まれている
                         await locator.click(timeout=10000) # タイムアウトを設定
-                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素をクリックしました"})
+                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素をクリックしました"})
                     except Exception as e:
                         current_url = "不明"
                         try:
                             current_url = page.url
                         except Exception as url_e:
                             add_debug_log(f"ワーカースレッド: 要素クリックエラー時のURL取得失敗: {url_e}")
-                        error_msg = f"要素クリックエラー (ref_id={ref_id}): {e}"
+                        error_msg = f"要素クリックエラー (ref_id={ref_id}, selector=[data-ref-id='ref-{ref_id}']): {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                         _res_queue.put({"status": "error", "message": error_msg})
                 
                 elif command == "input_text":
                     # ref_idで要素を特定してテキスト入力
                     text = params.get("text")
-                    ref_id = params.get("ref_id")
+                    ref_id = params.get("ref_id") # 数値で受け取る
                     add_debug_log(f"ワーカースレッド: テキスト入力 (ref_id={ref_id}, text='{text}')")
 
-                    if not ref_id:
+                    if ref_id is None: # 数値なので None チェック
                         _res_queue.put({"status": "error", "message": "要素を特定するためのref_idが不足しています"})
                         continue
                     if text is None:
@@ -297,21 +299,22 @@ async def _async_worker():
                         continue
 
                     try:
-                        selector = f"[data-ref-id='{ref_id}']"
+                        selector = f"[data-ref-id='ref-{ref_id}']" # セレクタ構築時に "ref-" を付加
+                        add_debug_log(f"ワーカースレッド: テキスト入力対象セレクタ: {selector}")
                         locator = page.locator(selector)
                         # Locator API を使用して入力。自動待機やスクロールが組み込まれている
                         # クリアしてから入力
                         await locator.fill("", timeout=10000) # fillのタイムアウト
                         await locator.fill(text, timeout=10000) # fillのタイムアウト
                         await locator.press("Enter", timeout=5000) # pressのタイムアウト
-                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id}の要素にテキスト '{text}' を入力しました"})
+                        _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素にテキスト '{text}' を入力しました"})
                     except Exception as e:
                         current_url = "不明"
                         try:
                             current_url = page.url
                         except Exception as url_e:
                             add_debug_log(f"ワーカースレッド: テキスト入力エラー時のURL取得失敗: {url_e}")
-                        error_msg = f"テキスト入力エラー (ref_id={ref_id}, text='{text}'): {e}"
+                        error_msg = f"テキスト入力エラー (ref_id={ref_id}, selector=[data-ref-id='ref-{ref_id}'], text='{text}'): {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                         _res_queue.put({"status": "error", "message": error_msg})
                 
