@@ -22,6 +22,9 @@ browser-agent/
 ├── tests/                 # テスト用スクリプト
 │   ├── test_cli.py        # E2Eテスト
 │   ├── test_core.py       # コアロジックのユニットテスト
+│   ├── get_aria_snapshot.py # ARIA Snapshot取得テスト
+│   ├── click_element_test.py # click_elementツールテスト
+│   ├── input_text_test.py   # input_textツールテスト
 │   └── browser_test_app.py # ブラウザ操作テスト用UI (テスト目的のみ)
 ├── requirements.txt       # 依存ライブラリ
 ├── README.md              # このファイル
@@ -66,7 +69,11 @@ python main.py
 
 デフォルトでは、`main.py` 内の `run_cli_mode` 関数で定義された固定クエリが実行されます。異なる操作を行いたい場合は、`main.py` の `query` 変数を直接編集してください。
 
-デバッグモードを有効にするには、`main.py` 内の `debug` 変数を `True` に設定します。
+デバッグモードを有効にするには、`setup_logging(debug=True)` を実行するか、各種テストスクリプト・CLIスクリプトで `--debug` オプションを指定してください。デバッグモードでは内部エラー発生時にブラウザを開いたまま処理が停止し、手動で状況を確認できます (Enter キーで再開)。
+
+### 新しいデバッグ停止機能
+
+Playwright のタイムアウトや要素操作エラーが発生した際、デバッグモード (`--debug` オプション) では処理を中断してブラウザを開いたままにします。これにより、開発者は問題が発生した状態を直接ブラウザ上で確認できます。通常モードでは従来通り、エラー内容をログに残して処理を継続・終了します。
 
 ## テスト
 テスト用スクリプトは `tests/` ディレクトリに配置されています。
@@ -88,6 +95,18 @@ python -m unittest tests.test_cli
 # streamlit run tests/browser_test_app.py
 # (注: このテストは Streamlit がインストールされている場合のみ実行可能です)
 ```
+
+## 新しいテストスクリプト
+
+デバッグや各ツール単体の動作確認を容易にするため、以下のテストスクリプトを `tests/` ディレクトリに追加しました。
+
+| スクリプト | 説明 | 例 | 
+|------------|------|----|
+| `get_aria_snapshot.py` | 指定URLを開き、最新のARIA Snapshotを取得して表示 | `python tests/get_aria_snapshot.py --url "https://www.google.com" --debug` |
+| `click_element_test.py` | 指定URLを開き、指定 `ref_id` の要素をクリック | `python tests/click_element_test.py --url "https://www.google.com" --ref-id 2 --debug` |
+| `input_text_test.py` | 指定URLを開き、指定 `ref_id` の要素にテキスト入力 | `python tests/input_text_test.py --url "https://www.google.com" --ref-id 1 --text "今日の天気" --debug` |
+
+`--debug` を付けると、内部エラー発生時にブラウザを閉じずに一時停止するため、要素の状態などを確認しやすくなります。
 
 ## 技術仕様
 - Playwright: ブラウザ自動化
@@ -178,6 +197,11 @@ python main.py
 - デバッグモード実行時、プロジェクトルートの `log/` ディレクトリにタイムスタンプ付きのファイル名（`YYYY-MM-DD_HH-MM-SS.json`）でログファイルが生成されます。
 - 各ログ呼び出しごとに1件のJSONオブジェクトがインデント付きの形式で書き出されるため、ファイル単位で完全なJSON構造を確認できます。
 
+追加のログ強化機能:
+- **URL移動スタックトレース出力**: `goto_url` ツールがエラーを検知した際、例外のスタックトレースをログおよびレスポンスに含めます。
+- **ツールコマンド送受信ログ**: `tools.goto_url` でコマンド送信前後にキューサイズや応答内容をDEBUGレベルで記録します。
+- **デバッグモードでのURL移動エラー停止**: デバッグモード (`--debug`) 時にURL移動エラー発生時に処理を一時停止し、ブラウザの状態を確認できます。
+
 ### 表示されるログ情報
 
 - **Bedrock API呼び出し**: リクエスト詳細とレスポンス内容
@@ -217,6 +241,7 @@ add_debug_log(data, "グループ名")
 - {datetime.datetime.now().strftime("%Y-%m-%d")}: 要素操作 (`click_element`, `input_text`) でPlaywright Locator APIを使用するように変更し、操作の安定性を向上。
 - {datetime.datetime.now().strftime("%Y-%m-%d")}: ARIA Snapshot取得処理 (`get_aria_snapshot`) の安定性を向上（待機処理の追加、JavaScript内のエラーハンドリング強化）。
 - {datetime.datetime.now().strftime("%Y-%m-%d")}: ARIA Snapshotで返す `ref_id` を数値に変更。ツール (`click_element`, `input_text`) の入力スキーマも `ref_id` が数値を受け付けるように変更し、内部で `"ref-{数字}"` 形式のセレクタを使用するように修正。
+- {datetime.datetime.now().strftime("%Y-%m-%d")}: ページ移動 (`goto`) の `wait_until` 条件を `networkidle` から `domcontentloaded` に変更し、動的コンテンツを持つページでも適切にナビゲーション完了を検出するように修正。
 
 ## ライセンス
 

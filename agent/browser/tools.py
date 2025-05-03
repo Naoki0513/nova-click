@@ -46,16 +46,24 @@ def get_aria_snapshot(wait_time: float = 0.5):
 
 def goto_url(url: str) -> Dict[str, Any]:
     """指定したURLに移動します"""
-    add_debug_log(f"tools.goto_url: {url}に移動")
+    # デバッグ用ログ: コマンド送信前後の詳細を記録
+    add_debug_log(f"tools.goto_url: Sending goto command -> URL: {url}", level="DEBUG")
     _ensure_worker_initialized()
+    # キューサイズをログ出力
+    try:
+        queue_size = _cmd_queue.qsize()
+        add_debug_log(f"tools.goto_url: Command queue size before put: {queue_size}", level="DEBUG")
+    except Exception:
+        add_debug_log("tools.goto_url: キューサイズ取得に失敗", level="WARNING")
     _cmd_queue.put({'command': 'goto', 'params': {'url': url}})
+    add_debug_log(f"tools.goto_url: Sent goto command for URL: {url}", level="DEBUG")
     try:
         res = _res_queue.get(timeout=30.0)
-        add_debug_log(f"tools.goto_url: 応答受信 status={res.get('status')}")
+        add_debug_log(f"tools.goto_url: Received response: {res}", level="DEBUG")
         return res
     except Empty:
-        add_debug_log("tools.goto_url: タイムアウト")
-        return {'status': 'error', 'message': 'タイムアウト'}
+        add_debug_log("tools.goto_url: Timeout while waiting for response", level="ERROR")
+        return {'status': 'error', 'message': 'タイムアウト (応答なし)'}
 
 
 def click_element(ref_id: str) -> Dict[str, Any]:
@@ -74,6 +82,13 @@ def click_element(ref_id: str) -> Dict[str, Any]:
         add_debug_log("tools.click_element: ref_idが指定されていません")
         return {'status': 'error', 'message': '要素を特定するref_idが必要です'}
     
+    # クリック前にARIA Snapshotを取得してDOMにdata-ref-id属性を注入
+    add_debug_log(f"tools.click_element: クリック前にARIA Snapshot注入 (ref_id={ref_id})", level="DEBUG")
+    try:
+        _ = get_aria_snapshot(wait_time=0.5)
+    except Exception as e:
+        add_debug_log(f"tools.click_element: ARIA Snapshot注入エラー: {e}", level="WARNING")
+    # クリック実行ログ
     add_debug_log(f"tools.click_element: ref_id={ref_id}の要素をクリック")
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'click_element', 'params': params})
@@ -81,30 +96,11 @@ def click_element(ref_id: str) -> Dict[str, Any]:
     try:
         res = _res_queue.get(timeout=10.0)
         add_debug_log(f"tools.click_element: 応答受信 status={res.get('status')}")
-        
-        # 操作実行後にARIA Snapshotを取得
-        aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
-        
-        # 結果にARIA Snapshotを追加
-        res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
-        if aria_snapshot_result.get('status') != 'success':
-            res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
-        
+        # クリック処理の結果をそのまま返す (エラー時はエラーメッセージのみ)
         return res
     except Empty:
-        add_debug_log("tools.click_element: タイムアウト")
-        error_res = {'status': 'error', 'message': 'タイムアウト'}
-        
-        # エラー時にもARIA Snapshotを取得して含める
-        try:
-            aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
-            error_res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
-            if aria_snapshot_result.get('status') != 'success':
-                error_res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
-        except:
-            error_res['aria_snapshot_message'] = "ARIA Snapshot取得に失敗しました"
-        
-        return error_res
+        add_debug_log("tools.click_element: タイムアウト", level="ERROR")
+        return {'status': 'error', 'message': 'クリックタイムアウト'}
 
 
 def input_text(text: str, ref_id: str) -> Dict[str, Any]:

@@ -7,7 +7,7 @@ import boto3
 from typing import Dict, Any, Optional
 
 from agent.core import initialize_agent, get_system_prompt, handle_user_query
-from agent.utils import setup_logging
+from agent.utils import setup_logging, debug_pause, is_debug_mode
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ def run_cli_mode() -> int:
     
     if result.get("status") == "error":
         logger.error(f"クエリ処理中にエラーが発生しました: {result.get('message')}")
+        # デバッグモードの場合、ブラウザを開いたままにして一時停止
+        if is_debug_mode():
+            debug_pause("クエリ処理エラーによりデバッグ停止します")
         return 1
     
     # 結果を表示

@@ -5,7 +5,8 @@ import sys
 import asyncio
 import os
 import json
-from agent.utils import add_debug_log
+from agent.utils import add_debug_log, debug_pause, is_debug_mode
+import traceback  # トレースバック情報を取得するために追加
 
 # Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
@@ -110,15 +111,23 @@ async def _async_worker():
                     
                     add_debug_log(f"ワーカースレッド: URL移動 {url}")
                     try:
-                        response = await page.goto(url, wait_until="networkidle", timeout=30000)
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                         _res_queue.put({
                             "status": "success", 
                             "message": f"ページに移動: {url}",
                             "response_status": response.status if response else None
                         })
                     except Exception as e:
-                        add_debug_log(f"ワーカースレッド: URL移動エラー: {e}")
-                        _res_queue.put({"status": "error", "message": f"URL移動エラー: {e}"})
+                        # エラー情報とトレースバックをログ出力
+                        add_debug_log(e, level="ERROR")
+                        tb = traceback.format_exc()
+                        add_debug_log(f"ワーカースレッド: URL移動エラー詳細\n{tb}", level="DEBUG")
+                        # エラー応答にトレースバックを含める
+                        error_message = f"URL移動エラー: {e}"
+                        _res_queue.put({"status": "error", "message": error_message, "traceback": tb})
+                        # デバッグモード時に停止
+                        if is_debug_mode():
+                            debug_pause("URL移動エラーで停止")
                 
                 elif command == "get_aria_snapshot":
                     # ページのARIA Snapshotを取得
@@ -260,6 +269,9 @@ async def _async_worker():
                         error_msg = f"ARIA Snapshot取得エラー: {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                         _res_queue.put({"status": "error", "message": error_msg})
+                        # デバッグモードならブラウザを開いた状態で停止
+                        if is_debug_mode():
+                            debug_pause("ARIA Snapshot取得エラーで停止")
                 
                 elif command == "click_element":
                     # ref_idで要素を特定してクリック
@@ -284,6 +296,8 @@ async def _async_worker():
                         error_msg = f"要素クリックエラー (ref_id={ref_id}, selector=[data-ref-id='ref-{ref_id}']): {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                         _res_queue.put({"status": "error", "message": error_msg})
+                        if is_debug_mode():
+                            debug_pause("要素クリックエラーで停止")
                 
                 elif command == "input_text":
                     # ref_idで要素を特定してテキスト入力
@@ -317,6 +331,8 @@ async def _async_worker():
                         error_msg = f"テキスト入力エラー (ref_id={ref_id}, selector=[data-ref-id='ref-{ref_id}'], text='{text}'): {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                         _res_queue.put({"status": "error", "message": error_msg})
+                        if is_debug_mode():
+                            debug_pause("テキスト入力エラーで停止")
                 
                 elif command == "get_current_url":
                     # 現在のURLを取得
