@@ -9,7 +9,6 @@ Usage:
 """
 import sys
 import os
-import argparse
 import json
 import logging
 
@@ -19,15 +18,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from agent.utils import setup_logging
 from agent.browser.tools import initialize_browser, goto_url, get_aria_snapshot
 
+# テスト用パラメータ (ここを編集してください)
+URL = "https://www.google.com/"
+DEBUG_MODE = False
 
 def main():
-    parser = argparse.ArgumentParser(description="ARIA Snapshot取得テスト")
-    parser.add_argument("--url", type=str, default="https://www.google.com/", help="テスト対象のURL")
-    parser.add_argument("--debug", action="store_true", help="デバッグモード (常に有効)")
-    args = parser.parse_args()
-
-    # ログ設定 - デバッグモードを強制的に有効化
-    setup_logging(debug=True)
+    # テストスクリプトでは直接定義したパラメータを使用します
+    setup_logging(debug=DEBUG_MODE)
+    # テストパラメータを出力
+    logging.info(f"Test parameters: url={URL}")
 
     # ブラウザ起動
     init_res = initialize_browser()
@@ -36,11 +35,11 @@ def main():
         return 1
 
     # URLに移動
-    goto_res = goto_url(args.url)
+    goto_res = goto_url(URL)
     if goto_res.get("status") != "success":
         logging.error(f"URL移動に失敗: {goto_res.get('message')}")
         return 1
-    logging.info(f"ページに移動しました: {args.url}")
+    logging.info(f"ページに移動しました: {URL}")
 
     # ARIA Snapshot取得
     snap_res = get_aria_snapshot()

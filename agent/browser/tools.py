@@ -1,11 +1,13 @@
 import queue
 import json
 import time
-from agent.utils import add_debug_log
+from agent.utils import add_debug_log, is_debug_mode, debug_pause
 from queue import Queue, Empty
 from typing import Dict, Any, Optional, Tuple
 from .worker import initialize_browser, _ensure_worker_initialized, _cmd_queue, _res_queue
 
+# 操作可能な要素の role リスト (click_element と input_text がサポートする要素のみ)
+ALLOWED_ROLES = ['button', 'link', 'textbox', 'searchbox', 'combobox']
 
 def get_aria_snapshot(wait_time: float = 0.5):
     """ブラウザワーカースレッドからARIA Snapshot情報を取得し、
@@ -22,9 +24,12 @@ def get_aria_snapshot(wait_time: float = 0.5):
         add_debug_log(f"tools.get_aria_snapshot: 応答受信 status={res.get('status')}")
         
         if res.get('status') == 'success':
+            # 操作可能な要素のスナップショットのみを残す
+            raw_snapshot = res.get('aria_snapshot', [])
+            filtered_snapshot = [e for e in raw_snapshot if e.get('role') in ALLOWED_ROLES]
             return {
                 'status': 'success',
-                'aria_snapshot': res.get('aria_snapshot', []),
+                'aria_snapshot': filtered_snapshot,
                 'message': res.get('message', 'ARIA Snapshot取得成功')
             }
         else:
@@ -36,11 +41,17 @@ def get_aria_snapshot(wait_time: float = 0.5):
                 'message': f"ARIA Snapshot取得エラー: {error_msg}"
             }
     except Empty:
-        add_debug_log("tools.get_aria_snapshot: タイムアウト")
+        add_debug_log("tools.get_aria_snapshot: タイムアウト", level="ERROR")
+        # タイムアウト時の状態出力と一時停止
+        current_url = get_current_url()
+        add_debug_log(f"tools.get_aria_snapshot: タイムアウト URL={current_url}", level="ERROR")
+        if is_debug_mode():
+            debug_pause("ARIA Snapshot取得タイムアウトで停止")
         return {
             'status': 'error',
             'aria_snapshot': [],
-            'message': 'ARIA Snapshot取得タイムアウト'
+            'message': 'ARIA Snapshot取得タイムアウト',
+            'current_url': current_url
         }
 
 
@@ -82,12 +93,6 @@ def click_element(ref_id: str) -> Dict[str, Any]:
         add_debug_log("tools.click_element: ref_idが指定されていません")
         return {'status': 'error', 'message': '要素を特定するref_idが必要です'}
     
-    # クリック前にARIA Snapshotを取得してDOMにdata-ref-id属性を注入
-    add_debug_log(f"tools.click_element: クリック前にARIA Snapshot注入 (ref_id={ref_id})", level="DEBUG")
-    try:
-        _ = get_aria_snapshot(wait_time=0.5)
-    except Exception as e:
-        add_debug_log(f"tools.click_element: ARIA Snapshot注入エラー: {e}", level="WARNING")
     # クリック実行ログ
     add_debug_log(f"tools.click_element: ref_id={ref_id}の要素をクリック")
     _ensure_worker_initialized()
@@ -96,11 +101,42 @@ def click_element(ref_id: str) -> Dict[str, Any]:
     try:
         res = _res_queue.get(timeout=10.0)
         add_debug_log(f"tools.click_element: 応答受信 status={res.get('status')}")
-        # クリック処理の結果をそのまま返す (エラー時はエラーメッセージのみ)
+        # クリック後のページ状態を取得してARIA Snapshotを返す
+        try:
+            aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+            res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+            if aria_snapshot_result.get('status') != 'success':
+                res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        except Exception as e:
+            add_debug_log(f"tools.click_element: ARIA Snapshot取得エラー: {e}", level="WARNING")
         return res
     except Empty:
         add_debug_log("tools.click_element: タイムアウト", level="ERROR")
-        return {'status': 'error', 'message': 'クリックタイムアウト'}
+        current_url = get_current_url()
+        add_debug_log(f"tools.click_element: タイムアウト URL={current_url}, ref_id={ref_id}", level="ERROR")
+        if is_debug_mode():
+            debug_pause("クリックタイムアウトで停止")
+        error_res = {
+            'status': 'error',
+            'message': 'クリックタイムアウト',
+            'ref_id': ref_id,
+            'current_url': current_url
+        }
+        # クリックに使用したセレクタを追加
+        selector = f"[data-ref-id='ref-{ref_id}']"
+        error_res['selector'] = selector
+        try:
+            aria_res = get_aria_snapshot(wait_time=0.5)
+            error_res['aria_snapshot'] = aria_res.get('aria_snapshot', [])
+            if aria_res.get('status') != 'success':
+                error_res['aria_snapshot_message'] = aria_res.get('message', 'ARIA Snapshot取得失敗')
+            # 対象要素情報を追加
+            elements = error_res.get('aria_snapshot', [])
+            element_info = next((e for e in elements if e.get('ref_id') == ref_id), None)
+            error_res['element'] = element_info
+        except Exception as e:
+            error_res['aria_snapshot_message'] = f"ARIA Snapshot取得に失敗: {e}"
+        return error_res
 
 
 def input_text(text: str, ref_id: str) -> Dict[str, Any]:
@@ -128,19 +164,29 @@ def input_text(text: str, ref_id: str) -> Dict[str, Any]:
         res = _res_queue.get(timeout=10.0)
         add_debug_log(f"tools.input_text: 応答受信 status={res.get('status')}")
         
-        # 操作実行後にARIA Snapshotを取得
-        aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
-        
-        # 結果にARIA Snapshotを追加
-        res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
-        if aria_snapshot_result.get('status') != 'success':
-            res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
-        
+        # 操作実行後のページ状態を取得しARIA Snapshotを返す
+        try:
+            aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
+            res['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
+            if aria_snapshot_result.get('status') != 'success':
+                res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
+        except Exception as e:
+            add_debug_log(f"tools.input_text: ARIA Snapshot取得エラー: {e}", level="WARNING")
         return res
     except Empty:
-        add_debug_log("tools.input_text: タイムアウト")
-        error_res = {'status': 'error', 'message': 'タイムアウト'}
-        
+        add_debug_log("tools.input_text: タイムアウト", level="ERROR")
+        # タイムアウト時の状態出力と一時停止
+        current_url = get_current_url()
+        add_debug_log(f"tools.input_text: タイムアウト URL={current_url}, ref_id={ref_id}, text='{text}'", level="ERROR")
+        if is_debug_mode():
+            debug_pause("テキスト入力タイムアウトで停止")
+        error_res = {
+            'status': 'error',
+            'message': 'タイムアウト',
+            'ref_id': ref_id,
+            'text': text,
+            'current_url': current_url
+        }
         # エラー時にもARIA Snapshotを取得して含める
         try:
             aria_snapshot_result = get_aria_snapshot(wait_time=0.5)
@@ -149,7 +195,6 @@ def input_text(text: str, ref_id: str) -> Dict[str, Any]:
                 error_res['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
         except:
             error_res['aria_snapshot_message'] = "ARIA Snapshot取得に失敗しました"
-        
         return error_res
 
 
@@ -287,15 +332,6 @@ def dispatch_browser_tool(tool_name: str, params=None):
         add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")
         result = {'status': 'error', 'message': f'不明なツール: {tool_name}'}
     
-    # ARIA Snapshotがない場合は自動取得を試みる
-    if result and 'aria_snapshot' not in result:
-        try:
-            aria_snapshot_result = get_aria_snapshot(wait_time=0.3)
-            result['aria_snapshot'] = aria_snapshot_result.get('aria_snapshot', [])
-            if aria_snapshot_result.get('status') != 'success':
-                result['aria_snapshot_message'] = aria_snapshot_result.get('message', 'ARIA Snapshot取得失敗')
-        except Exception as e:
-            add_debug_log(f"tools.dispatch_browser_tool: ARIA Snapshot自動取得エラー: {e}")
-            result['aria_snapshot_message'] = "ARIA Snapshot自動取得に失敗しました"
+    # 冗長なARIA Snapshot自動取得は行わない（初回注入済みのため）
     
     return result 

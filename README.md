@@ -96,15 +96,18 @@ python -m unittest tests.test_cli
 # (注: このテストは Streamlit がインストールされている場合のみ実行可能です)
 ```
 
+各テストスクリプトは `--debug` オプションをサポートし、タイムアウトエラー発生時にブラウザを閉じずに一時停止し、テストパラメータ（URL、ref_id、textなど）をログに出力します。
+
 ## 新しいテストスクリプト
 
 デバッグや各ツール単体の動作確認を容易にするため、以下のテストスクリプトを `tests/` ディレクトリに追加しました。
 
 | スクリプト | 説明 | 例 | 
 |------------|------|----|
-| `get_aria_snapshot.py` | 指定URLを開き、最新のARIA Snapshotを取得して表示 | `python tests/get_aria_snapshot.py --url "https://www.google.com" --debug` |
-| `click_element_test.py` | 指定URLを開き、指定 `ref_id` の要素をクリック | `python tests/click_element_test.py --url "https://www.google.com" --ref-id 2 --debug` |
-| `input_text_test.py` | 指定URLを開き、指定 `ref_id` の要素にテキスト入力 | `python tests/input_text_test.py --url "https://www.google.com" --ref-id 1 --text "今日の天気" --debug` |
+| `get_aria_snapshot.py` | 指定URLを開き、最新のARIA Snapshotを取得して表示（--debugオプションでタイムアウト時に停止しURLをログ出力） | `python tests/get_aria_snapshot.py --url "https://www.google.com" --debug` |
+| `click_element_test.py` | 指定URLを開き、指定 `ref_id` の要素をクリック（--debugオプションでタイムアウト時に停止しURLとref_idをログ出力） | `python tests/click_element_test.py --url "https://www.google.com" --ref-id 2 --debug` |
+| `input_text_test.py` | 指定URLを開き、指定 `ref_id` の要素にテキスト入力（--debugオプションでタイムアウト時に停止しURL,ref_id,textをログ出力） | `python tests/input_text_test.py --url "https://www.google.com" --ref-id 1 --text "今日の天気" --debug` |
+| | 各テストは `--debug` オプションを付与すると、タイムアウト時にブラウザを開いたままテストパラメータをログに出力し一時停止します | |
 
 `--debug` を付けると、内部エラー発生時にブラウザを閉じずに一時停止するため、要素の状態などを確認しやすくなります。
 

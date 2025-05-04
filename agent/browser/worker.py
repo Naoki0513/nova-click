@@ -219,9 +219,13 @@ async def _async_worker():
                                                          window.getComputedStyle(element).visibility !== 'hidden' &&
                                                          window.getComputedStyle(element).display !== 'none';
                                         
+                                        // disabled または readonly 要素は除外
+                                        const isDisabled = element.disabled === true || element.hasAttribute('disabled');
+                                        const isReadOnly = element.readOnly === true || element.hasAttribute('readonly');
+                                        
                                         // スナップショットに追加 (role, name, ref_id のみ)
-                                        // roleがunknownでなく、nameが空でも追加する（代替テキストを設定）
-                                        if (isVisible && role !== 'unknown') {
+                                        // 操作可能でvisibleかつrole!==unknownの場合のみ追加
+                                        if (!isDisabled && !isReadOnly && isVisible && role !== 'unknown') {
                                             snapshotResult.push({
                                                 role: role,
                                                 name: name || 'Unnamed Element', // nameが空の場合の代替テキスト
@@ -284,8 +288,39 @@ async def _async_worker():
                         selector = f"[data-ref-id='ref-{ref_id}']" # セレクタ構築時に "ref-" を付加
                         add_debug_log(f"ワーカースレッド: クリック対象セレクタ: {selector}")
                         locator = page.locator(selector)
-                        # Locator API を使用してクリック。自動待機やスクロールが組み込まれている
-                        await locator.click(timeout=10000) # タイムアウトを設定
+                        # 最初のクリック試行（自動スクロール込み）。ビュー外エラー時はバウンディングボックス取得→window.scrollBy→scrollIntoView→再試行→forceクリック
+                        try:
+                            await locator.click(timeout=10000)
+                        except Exception as e_click:
+                            msg = str(e_click)
+                            if "outside of the viewport" in msg:
+                                add_debug_log("要素がビューポート外: 自動スクロール＆再試行を実行", level="WARNING")
+                                # バウンディングボックスを取得
+                                box = await locator.bounding_box()
+                                # ビューポート高さを取得
+                                vp = await page.evaluate("() => ({height: window.innerHeight})")
+                                if box and isinstance(vp, dict):
+                                    y, h, vp_h = box.get("y", 0), box.get("height", 0), vp.get("height", 0)
+                                    # 要素位置に応じたスクロール量計算
+                                    if y < 0:
+                                        scroll_amt = y - 20
+                                    elif y + h > vp_h:
+                                        scroll_amt = y + h - vp_h + 20
+                                    else:
+                                        scroll_amt = 0
+                                    if scroll_amt:
+                                        add_debug_log(f"window.scrollBy(0, {scroll_amt}) でスクロール", level="DEBUG")
+                                        await page.evaluate(f"() => window.scrollBy(0, {scroll_amt})")
+                                # 要素を中央に配置
+                                await locator.evaluate("el => el.scrollIntoView({block: 'center', inline: 'center'})")
+                                # 再試行
+                                try:
+                                    await locator.click(timeout=10000)
+                                except Exception:
+                                    add_debug_log("再試行失敗: forceオプションで強制クリックを実行", level="WARNING")
+                                    await locator.click(force=True, timeout=10000)
+                            else:
+                                raise
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素をクリックしました"})
                     except Exception as e:
                         current_url = "不明"
@@ -295,7 +330,8 @@ async def _async_worker():
                             add_debug_log(f"ワーカースレッド: 要素クリックエラー時のURL取得失敗: {url_e}")
                         error_msg = f"要素クリックエラー (ref_id={ref_id}, selector=[data-ref-id='ref-{ref_id}']): {e}"
                         add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
-                        _res_queue.put({"status": "error", "message": error_msg})
+                        tb = traceback.format_exc()
+                        _res_queue.put({"status": "error", "message": error_msg, "traceback": tb})
                         if is_debug_mode():
                             debug_pause("要素クリックエラーで停止")
                 
