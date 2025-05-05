@@ -7,8 +7,6 @@ from .tools import (
     click_element, input_text,
     dispatch_browser_tool
 )
-import queue
-import time
 
 __all__ = [
     'initialize_browser', 

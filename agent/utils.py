@@ -148,34 +148,6 @@ def add_debug_log(msg, group=None, level: str = "DEBUG"):
     else:
         logger.log(log_level_int, log_output) # 未知のレベルはlogメソッドで処理
 
-def extract_text_from_assistant_message(message):
-    """アシスタントメッセージからテキスト部分を抽出します。"""
-    if not message:
-        return ""
-
-    text_parts = []
-
-    # contentがリストの場合
-    if isinstance(message.get("content"), list):
-        for content in message.get("content", []):
-            # "type" キーが存在しない、または "text" の場合
-            if content.get("type", "text") == "text":
-                text = content.get("text", "")
-                if text.strip():  # 空でない場合のみ追加
-                    text_parts.append(text)
-    # contentが辞書の場合（古い形式）
-    elif isinstance(message.get("content"), dict):
-        if "text" in message.get("content", {}):
-            text = message.get("content", {}).get("text", "")
-            if text.strip():
-                text_parts.append(text)
-    # contentが文字列の場合（最も古い形式）
-    elif isinstance(message.get("content"), str):
-        if message.get("content").strip():
-            text_parts.append(message.get("content"))
-
-    return "\n".join(text_parts)
-
 def log_json_debug(name: str, data: Union[Dict[Any, Any], List[Any]], level: str = "DEBUG"):
     """
     Pretty-print JSON data to logs if the specified log level is enabled.

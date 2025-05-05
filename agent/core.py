@@ -119,8 +119,7 @@ def handle_user_query(
     user_input: str,
     bedrock_session,
     system_prompt: str,
-    model_id: str,
-    session_state: Optional[Dict] = None
+    model_id: str
 ) -> Dict[str, Any]:
     """ユーザー入力を処理して応答を返す"""
     result = {
@@ -202,7 +201,6 @@ def handle_user_query(
         # 6. ツール実行と結果の作成
         if tool_calls:
             merged_user_content = [] # このターンのツール結果を入れるリスト
-            tool_execution_failed = False # ツール実行失敗フラグ
             
             for tool_call in tool_calls:
                 tool_name = tool_call.get("name")
@@ -245,7 +243,6 @@ def handle_user_query(
                 
                 if tool_status == "error":
                     logger.error(f"ツール '{tool_name}' の実行に失敗しました: {tool_result_data.get('message')}")
-                    tool_execution_failed = True
 
             # マージした内容でuserメッセージを作成
             merged_user_message = {"role": "user", "content": merged_user_content}

@@ -1,8 +1,7 @@
-import queue
 import json
 import time
 from agent.utils import add_debug_log, is_debug_mode, debug_pause
-from queue import Queue, Empty
+from queue import Empty
 from typing import Dict, Any, Optional, Tuple
 from .worker import initialize_browser, _ensure_worker_initialized, _cmd_queue, _res_queue
 
@@ -241,73 +240,6 @@ def cleanup_browser():
     except Empty:
         add_debug_log("tools.cleanup_browser: タイムアウト")
         return {'status': 'error', 'message': 'タイムアウト'}
-
-
-def find_element_by_role_name(aria_snapshot, role=None, name=None):
-    """ARIA Snapshotから特定のroleとnameを持つ要素を探します。
-    
-    Args:
-        aria_snapshot: ARIAスナップショットのリスト
-        role: 要素のロール（button, link等）
-        name: 要素の表示名
-        
-    Returns:
-        マッチする要素のデータ（辞書）。見つからない場合はNone。
-    """
-    if not aria_snapshot:
-        return None
-    
-    for item in aria_snapshot:
-        item_role = item.get('role', '')
-        item_name = item.get('name', '')
-        
-        # roleとnameの両方が指定されている場合は両方一致する必要がある
-        if role and name:
-            if item_role == role and name in item_name:
-                return item
-        # roleのみ指定されている場合
-        elif role and not name:
-            if item_role == role:
-                return item
-        # nameのみ指定されている場合
-        elif name and not role:
-            if name in item_name:
-                return item
-    
-    return None
-
-
-def extract_interactive_elements(aria_snapshot):
-    """ARIAスナップショットから対話可能なUI要素を抽出します。
-    
-    Args:
-        aria_snapshot: ARIAスナップショットのリスト
-        
-    Returns:
-        Dict[str, list]: カテゴリ別の要素リスト
-    """
-    if not aria_snapshot:
-        return {}
-    
-    result = {
-        'buttons': [],
-        'links': [],
-        'inputs': [],
-        'other': []
-    }
-    
-    for item in aria_snapshot:
-        role = item.get('role', '').lower()
-        if role == 'button':
-            result['buttons'].append(item)
-        elif role == 'link':
-            result['links'].append(item)
-        elif role in ['textbox', 'searchbox', 'combobox']:
-            result['inputs'].append(item)
-        else:
-            result['other'].append(item)
-    
-    return result
 
 
 def dispatch_browser_tool(tool_name: str, params=None):
