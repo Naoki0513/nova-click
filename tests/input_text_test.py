@@ -9,9 +9,9 @@ import json
 import logging
 
 # テスト用パラメータ (ここを編集してください)
-URL = "https://www.amazon.co.jp/"
-REF_ID = 6
-TEXT = "佐藤のごはん"
+URL = "https://www.google.co.jp/"
+REF_ID = 8
+TEXT = "Amazon"
 DEBUG_MODE = True
 
 # プロジェクトルートをPythonパスに追加

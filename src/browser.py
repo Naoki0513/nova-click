@@ -42,6 +42,25 @@ ALLOWED_ROLES = ['button', 'link', 'textbox', 'searchbox', 'combobox']
 # ブラウザ操作関連のロガー
 logger = logging.getLogger(__name__)
 
+# 画面解像度取得用の関数を追加
+def _get_screen_size() -> Tuple[int, int]:
+    """デバイスの画面解像度を取得して返します。"""
+    try:
+        if sys.platform == "win32":
+            from ctypes import windll
+            width = windll.user32.GetSystemMetrics(0)
+            height = windll.user32.GetSystemMetrics(1)
+        else:
+            import tkinter
+            root = tkinter.Tk()
+            width = root.winfo_screenwidth()
+            height = root.winfo_screenheight()
+            root.destroy()
+        add_debug_log(f"取得した画面解像度: {width}x{height}")
+        return width, height
+    except Exception as e:
+        add_debug_log(f"スクリーンサイズ取得エラー: {e}", level="WARNING")
+        return 1920, 1080
 
 def _worker_thread():
     """ブラウザワーカーのメインスレッド処理"""
@@ -303,6 +322,9 @@ async def _async_worker():
     """非同期ワーカースレッドとして Playwright を直接操作します"""
     add_debug_log("ワーカースレッド: 非同期ブラウザワーカー開始")
 
+    # 画面解像度を取得
+    screen_width, screen_height = _get_screen_size()
+
     # --- Playwright 起動 ---
     from playwright.async_api import async_playwright
 
@@ -312,7 +334,10 @@ async def _async_worker():
     browser_launch_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-features=IsolateOrigins",
-        "--disable-site-isolation-trials"
+        "--disable-site-isolation-trials",
+        "--start-maximized",
+        "--start-fullscreen",
+        f"--window-size={screen_width},{screen_height}"
     ]
 
     browser = await playwright.chromium.launch(
@@ -324,7 +349,7 @@ async def _async_worker():
     context = await browser.new_context(
         locale="ja-JP",
         ignore_https_errors=True,
-        viewport={"width": 1920, "height": 1080},
+        viewport={"width": screen_width, "height": screen_height},
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     )
 
