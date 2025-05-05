@@ -15,8 +15,8 @@ import logging
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from agent.utils import setup_logging
-from agent.browser.tools import initialize_browser, goto_url, get_aria_snapshot
+from src.utils import setup_logging
+from src.browser import initialize_browser, goto_url, get_aria_snapshot
 
 # テスト用パラメータ (ここを編集してください)
 URL = "https://www.google.com/"

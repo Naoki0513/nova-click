@@ -86,23 +86,23 @@ python -m unittest tests.test_cli
 
 ```
 browser-agent/
-├── agent/                 # エージェントのコアコード
-│   ├── __init__.py
-│   ├── core.py            # メインロジック、Bedrock連携
+├── src/                   # ソースコードディレクトリ
+│   ├── __init__.py        # パッケージ初期化ファイル
 │   ├── prompts.py         # LLM向けプロンプト
 │   ├── utils.py           # ユーティリティ（ロギング、認証情報読み込み等）
-│   └── browser/           # ブラウザ操作関連
-│       ├── __init__.py
-│       ├── worker.py      # Playwrightを非同期で実行するワーカー
-│       └── tools.py       # ブラウザ操作ツール (click, inputなど)
+│   ├── bedrock.py         # Amazon Bedrock API連携機能
+│   ├── message.py         # 会話履歴管理と整形
+│   ├── tools.py           # ツール定義とディスパッチロジック
+│   └── browser.py         # ブラウザ操作（Playwright連携）
 ├── credentials/           # 認証情報 (Git管理外推奨)
 │   └── aws_credentials.json
 ├── tests/                 # 各種テストスクリプト
 │   ├── test_cli.py        # E2Eテスト
-│   ├── test_core.py       # agent.core のユニットテスト
+│   ├── test_core.py       # コア機能のユニットテスト
 │   ├── get_aria_snapshot.py # ARIA Snapshot取得単体テスト
 │   ├── click_element_test.py # click_element 単体テスト
 │   └── input_text_test.py   # input_text 単体テスト
+├── log/                   # ログファイル出力ディレクトリ
 ├── requirements.txt       # Python依存ライブラリ
 ├── README.md              # このファイル
 └── main.py                # アプリケーションのエントリーポイント
@@ -116,5 +116,6 @@ browser-agent/
 
 | 日付 | 変更内容 |
 |------|----------|
+| 2024-07-16 | 大規模コードリファクタリングを実施。ディレクトリ構造を整理し、`agent`ディレクトリを`src`に変更。機能ごとに以下のモジュールに分割して保守性を向上：<br>- `browser.py`: Playwright APIを使用したブラウザ操作機能（旧`worker.py`と`tools.py`を統合）<br>- `tools.py`: LLM用ツール定義とディスパッチロジック<br>- `bedrock.py`: Amazon Bedrock API連携（旧`core.py`から分離）<br>- `message.py`: 会話履歴管理と整形（メッセージ関連処理を一元化）<br>- `prompts.py`: LLMシステムプロンプト（既存の場所を維持）<br>- `utils.py`: ユーティリティ関数（既存の場所を維持）<br>加えて、モジュール間の相対インポートパスを適切に修正し、循環インポートを解消。 |
 | 2024-06-XX | Playwright 公式APIを直接使用するように `agent/browser/worker.py` をリファクタリングし、`browser-use` への依存を削除しました。 |
 | 2024-06-29 | 未使用コードのクリーンアップを実施。未使用の関数・インポート・変数を削除してコードベースを最適化しました。 |

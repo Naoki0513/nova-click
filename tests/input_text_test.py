@@ -17,8 +17,8 @@ DEBUG_MODE = True
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from agent.browser.tools import initialize_browser, goto_url, input_text, get_aria_snapshot
-from agent.utils import setup_logging
+from src.browser import initialize_browser, goto_url, input_text, get_aria_snapshot
+from src.utils import setup_logging
 
 
 def main():
