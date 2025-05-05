@@ -117,6 +117,7 @@ browser-agent/
 
 | 日付 | 変更内容 |
 |------|----------|
+| 2024-09-01 | Playwright API呼び出しのタイムアウトを無効化し、time.sleepやwait_for_load_stateなどの待機時間を削除しました。 |
 | 2024-08-XX | ブラウザ起動時に実行環境の画面解像度を取得し、viewportおよびウィンドウサイズに動的に設定する機能を追加しました。 |
 | 2024-07-16 | 大規模コードリファクタリングを実施。ディレクトリ構造を整理し、`agent`ディレクトリを`src`に変更。機能ごとに以下のモジュールに分割して保守性を向上：<br>- `browser.py`: Playwright APIを使用したブラウザ操作機能（旧`worker.py`と`tools.py`を統合）<br>- `tools.py`: LLM用ツール定義とディスパッチロジック<br>- `bedrock.py`: Amazon Bedrock API連携（旧`core.py`から分離）<br>- `message.py`: 会話履歴管理と整形（メッセージ関連処理を一元化）<br>- `prompts.py`: LLMシステムプロンプト（既存の場所を維持）<br>- `utils.py`: ユーティリティ関数（既存の場所を維持）<br>加えて、モジュール間の相対インポートパスを適切に修正し、循環インポートを解消。 |
 | 2024-06-XX | Playwright 公式APIを直接使用するように `agent/browser/worker.py` をリファクタリングし、`browser-use` への依存を削除しました。 |

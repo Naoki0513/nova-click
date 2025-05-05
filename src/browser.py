@@ -82,8 +82,9 @@ def initialize_browser():
     _browser_thread.start()
     _thread_started = True
     
-    # ブラウザが起動するまで少し待機
-    time.sleep(2.0)
+    # ブラウザ起動待機を削除 (すぐに操作可能とみなす)
+    # time.sleepを無効化
+
     add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
     
     return {"status": "success", "message": "ブラウザワーカーを初期化しました"}
@@ -99,15 +100,13 @@ def _ensure_worker_initialized():
 def get_aria_snapshot(wait_time: float = 0.5):
     """ブラウザワーカースレッドからARIA Snapshot情報を取得し、
     button, link, combobox要素などをフラットリストで返します。"""
-    if wait_time > 0:
-        add_debug_log(f"browser.get_aria_snapshot: {wait_time}秒待機してからARIA Snapshot取得")
-        time.sleep(wait_time)  # ARIA Snapshot取得前に指定された時間だけ待機
+    # 待機なしで即時ARIA Snapshot取得
 
     add_debug_log("browser.get_aria_snapshot: ARIAスナップショット取得要求送信")
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'get_aria_snapshot'})
     try:
-        res = _res_queue.get(timeout=10.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.get_aria_snapshot: 応答受信 status={res.get('status')}")
         
         if res.get('status') == 'success':
@@ -148,7 +147,7 @@ def goto_url(url: str) -> Dict[str, Any]:
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'goto', 'params': {'url': url}})
     try:
-        res = _res_queue.get(timeout=30.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.goto_url: 応答受信: {res}", level="DEBUG")
         return res
     except queue.Empty:
@@ -175,7 +174,7 @@ def click_element(ref_id: int) -> Dict[str, Any]:
     _cmd_queue.put({'command': 'click_element', 'params': {'ref_id': ref_id}})
     
     try:
-        res = _res_queue.get(timeout=10.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.click_element: 応答受信 status={res.get('status')}")
         # クリック後のページ状態を取得してARIA Snapshotを返す
         try:
@@ -237,7 +236,7 @@ def input_text(text: str, ref_id: int) -> Dict[str, Any]:
     _cmd_queue.put({'command': 'input_text', 'params': {'text': text, 'ref_id': ref_id}})
     
     try:
-        res = _res_queue.get(timeout=10.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.input_text: 応答受信 status={res.get('status')}")
         
         # 操作実行後のページ状態を取得しARIA Snapshotを返す
@@ -280,7 +279,7 @@ def get_current_url() -> str:
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'get_current_url'})
     try:
-        res = _res_queue.get(timeout=5.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.get_current_url: 応答受信 status={res.get('status')}")
         if res.get('status') == 'success':
             return res.get('url', '')
@@ -297,7 +296,7 @@ def save_cookies() -> Dict[str, Any]:
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'save_cookies'})
     try:
-        res = _res_queue.get(timeout=5.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.save_cookies: 応答受信 status={res.get('status')}")
         return res
     except queue.Empty:
@@ -311,7 +310,7 @@ def cleanup_browser():
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'quit'})
     try:
-        res = _res_queue.get(timeout=10.0)
+        res = _res_queue.get()
         add_debug_log(f"browser.cleanup_browser: 応答受信 status={res.get('status')}")
         return res
     except queue.Empty:
@@ -371,7 +370,7 @@ async def _async_worker():
         # 初期ページとしてGoogleを開く
         try:
             add_debug_log("ワーカースレッド: 初期ページ(Google)を読み込みます")
-            await page.goto("https://www.google.com/", wait_until="networkidle", timeout=30000)
+            await page.goto("https://www.google.com/", wait_until="networkidle", timeout=0)
             
             # JavaScriptを使ってウィンドウにフォーカスを当てる
             await page.evaluate("""() => {
@@ -405,7 +404,7 @@ async def _async_worker():
                     
                     add_debug_log(f"ワーカースレッド: URL移動 {url}")
                     try:
-                        response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=0)
                         _res_queue.put({
                             "status": "success", 
                             "message": f"ページに移動: {url}",
@@ -427,11 +426,8 @@ async def _async_worker():
                     # ページのARIA Snapshotを取得
                     add_debug_log("ワーカースレッド: ARIA Snapshot取得")
                     try:
-                        # ページのDOMが読み込まれるのを少し待つ (gotoでnetworkidleは待っているはずだが念のため)
-                        try:
-                            await page.wait_for_load_state('domcontentloaded', timeout=5000)
-                        except Exception as wait_e:
-                            add_debug_log(f"ワーカースレッド: domcontentloaded 待機中にタイムアウトまたはエラー: {wait_e}")
+                        # DOM読み込み待ちをスキップ（即時実行）
+                        await page.wait_for_load_state('domcontentloaded', timeout=0)
                         
                         # aria-snapshotを取得 (JavaScript評価)
                         aria_snapshot = await page.evaluate("""() => {
@@ -584,7 +580,7 @@ async def _async_worker():
                         locator = page.locator(selector)
                         # 最初のクリック試行（自動スクロール込み）。ビュー外エラー時はバウンディングボックス取得→window.scrollBy→scrollIntoView→再試行→forceクリック
                         try:
-                            await locator.click(timeout=10000)
+                            await locator.click(timeout=0)
                         except Exception as e_click:
                             msg = str(e_click)
                             if "outside of the viewport" in msg:
@@ -609,10 +605,10 @@ async def _async_worker():
                                 await locator.evaluate("el => el.scrollIntoView({block: 'center', inline: 'center'})")
                                 # 再試行
                                 try:
-                                    await locator.click(timeout=10000)
+                                    await locator.click(timeout=0)
                                 except Exception:
                                     add_debug_log("再試行失敗: forceオプションで強制クリックを実行", level="WARNING")
-                                    await locator.click(force=True, timeout=10000)
+                                    await locator.click(force=True, timeout=0)
                             else:
                                 raise
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素をクリックしました"})
@@ -648,9 +644,9 @@ async def _async_worker():
                         locator = page.locator(selector)
                         # Locator API を使用して入力。自動待機やスクロールが組み込まれている
                         # クリアしてから入力
-                        await locator.fill("", timeout=10000) # fillのタイムアウト
-                        await locator.fill(text, timeout=10000) # fillのタイムアウト
-                        await locator.press("Enter", timeout=5000) # pressのタイムアウト
+                        await locator.fill("", timeout=0) # タイムアウト無効化
+                        await locator.fill(text, timeout=0) # タイムアウト無効化
+                        await locator.press("Enter", timeout=0) # タイムアウト無効化
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素にテキスト '{text}' を入力しました"})
                     except Exception as e:
                         current_url = "不明"
@@ -733,8 +729,6 @@ def initialize_browser():
     _browser_thread.start()
     _thread_started = True
     
-    # ブラウザが起動するまで少し待機
-    time.sleep(2.0)
     add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
     
     return {"status": "success", "message": "ブラウザワーカーを初期化しました"} 
