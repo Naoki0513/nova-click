@@ -1,5 +1,2 @@
 boto3==1.38.4
 playwright==1.40.0
-playwright-stealth>=1.0.0
-beautifulsoup4==4.12.2   
-browser-use==0.1.41
