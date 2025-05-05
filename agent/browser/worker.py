@@ -21,34 +21,39 @@ _browser_thread = None
 # Cookie ファイルパス
 _COOKIE_FILE = "browser_cookies.json"
 
+# NOTE:
+#  このワーカースレッドは従来 `browser-use` ライブラリを利用していましたが、
+#  依存関係削減のため Playwright 公式 API のみで再実装しました。
+#  `browser-use` が提供していた Browser/Context ラッパを自前で組み立てています。
+
+
 async def _async_worker():
-    """非同期ワーカースレッドとして Playwright と browser-use API を起動・操作します"""
+    """非同期ワーカースレッドとして Playwright を直接操作します"""
     add_debug_log("ワーカースレッド: 非同期ブラウザワーカー開始")
-    
-    # browser-useライブラリをインポート
-    from browser_use.browser.browser import Browser, BrowserConfig
-    from browser_use.browser.context import BrowserContextConfig
+
+    # --- Playwright 起動 ---
     from playwright.async_api import async_playwright
 
-    # Browser設定
-    browser_config = BrowserConfig(
+    playwright = await async_playwright().start()
+
+    # Chromium ブラウザを起動 (従来の BrowserConfig 相当の設定)
+    browser_launch_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins",
+        "--disable-site-isolation-trials"
+    ]
+
+    browser = await playwright.chromium.launch(
         headless=False,
-        browser_binary_path=None,  # システムのChromeを使用
-        disable_security=True,  # iframe対応のために必要
-        deterministic_rendering=False,
-        extra_browser_args=[
-            "--disable-blink-features=AutomationControlled",
-            "--disable-features=IsolateOrigins",
-            "--disable-site-isolation-trials"
-        ]
+        args=browser_launch_args,
     )
 
-    # Context設定
-    context_config = BrowserContextConfig(
+    # コンテキストを作成 (従来の BrowserContextConfig 相当)
+    context = await browser.new_context(
         locale="ja-JP",
         ignore_https_errors=True,
-        browser_window_size={"width": 1920, "height": 1080},
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        viewport={"width": 1920, "height": 1080},
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     )
 
     # Cookieファイルがあれば読み込む
@@ -56,24 +61,16 @@ async def _async_worker():
         try:
             with open(_COOKIE_FILE, "r", encoding="utf-8") as f:
                 cookies = json.load(f)
-            context_config.cookies = cookies
+            # Playwright 形式に合わせて add_cookies でセット
+            await context.add_cookies(cookies)
             add_debug_log(f"ワーカースレッド: クッキーを読み込みました: {len(cookies)} 件")
         except Exception as e:
             add_debug_log(f"ワーカースレッド: クッキーの読み込みに失敗: {e}")
 
-    # ブラウザを起動
-    add_debug_log("ワーカースレッド: ブラウザを起動します")
-    browser = None
-    page = None
+    # 新しいページを作成
+    page = await context.new_page()
 
     try:
-        # browser-useを使用してブラウザを起動
-        browser = Browser(config=browser_config)
-        context = await browser.new_context(config=context_config)
-        
-        # ページを開く
-        page = await context.get_current_page()
-        
         # 初期ページとしてGoogleを開く
         try:
             add_debug_log("ワーカースレッド: 初期ページ(Google)を読み込みます")
@@ -384,7 +381,8 @@ async def _async_worker():
                     # Cookieを保存
                     add_debug_log("ワーカースレッド: Cookie保存")
                     try:
-                        cookies = await context.get_cookies()
+                        # Playwright BrowserContext から Cookie を取得
+                        cookies = await context.cookies()
                         with open(_COOKIE_FILE, "w", encoding="utf-8") as f:
                             json.dump(cookies, f, ensure_ascii=False, indent=2)
                         _res_queue.put({"status": "success", "message": f"{len(cookies)}件のCookieを保存しました"})
