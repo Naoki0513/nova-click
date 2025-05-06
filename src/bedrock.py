@@ -8,9 +8,8 @@ Bedrock API を使用して、LLMに基づくブラウザ操作エージェン�
 - APIレスポンスの解析
 """
 
-import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from .utils import add_debug_log, log_json_debug
 

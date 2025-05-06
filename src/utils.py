@@ -9,31 +9,6 @@ from typing import Dict, Any, Optional, Union, List
 
 logger = logging.getLogger(__name__)
 
-# ここから追加: グローバルなデバッグモードフラグ
-_DEBUG_MODE: bool = False
-
-def is_debug_mode() -> bool:
-    """現在デバッグモードかどうかを返します"""
-    return _DEBUG_MODE
-
-def debug_pause(message: str = "デバッグ一時停止") -> None:
-    """デバッグモード時に処理を一時停止してブラウザを開いたままにします。
-
-    標準入力を待機することでプロセスの終了を防ぎ、ブラウザを観察できるようにします。
-    デバッグモードでない場合は何もしません。
-    """
-    if not _DEBUG_MODE:
-        return
-
-    # 明示的にログに出力
-    logger.error(f"DEBUG PAUSE: {message}")
-    try:
-        # ユーザーが Enter を押すまで待機
-        input("\nデバッグモード: ブラウザを開いたままにするため処理を停止しました。Enter キーで終了します...\n")
-    except KeyboardInterrupt:
-        # Ctrl+C でも終了できるようにする
-        logger.info("デバッグモード: KeyboardInterrupt で終了します")
-
 def setup_logging(debug: bool = False) -> None:
     """
     アプリケーション全体のロギング設定を行います。
@@ -63,10 +38,6 @@ def setup_logging(debug: bool = False) -> None:
 
     # 設定完了をINFOレベルでログ出力（ただしハンドラ追加後）
     root_logger.info(f"ログレベルを{logging.getLevelName(log_level)}に設定しました")
-
-    # デバッグモードフラグを更新
-    global _DEBUG_MODE
-    _DEBUG_MODE = bool(debug)
 
 def load_credentials(file_path):
     """認証情報をJSONファイルから読み込みます。"""

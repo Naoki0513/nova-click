@@ -5,7 +5,7 @@ import logging
 import sys
 from typing import Dict, Any, Optional
 
-from src.utils import setup_logging, debug_pause, is_debug_mode, load_credentials
+from src.utils import setup_logging, load_credentials
 from src.browser import initialize_browser, get_aria_snapshot, cleanup_browser
 from src.tools import get_browser_tools_config, dispatch_browser_tool
 from src.prompts import get_system_prompt
@@ -19,14 +19,13 @@ logger = logging.getLogger(__name__)
 def run_cli_mode() -> int:
 
     # --- ここで実行パラメータを設定 --- +
-    query = "Amazonでイヤホンを調べてカートに入れてください" # 固定のクエリ
+    query = "Amazonでイヤホンを調べてカートに入れてください。そのあとカートを開いてください。" # 固定のクエリ
     model_id = "us.amazon.nova-pro-v1:0"
     credentials_path = "credentials/aws_credentials.json"
-    debug = False # デバッグモードを無効にする場合は False
     max_turns = 20  # 最大対話ターン数
     # ------------------------------------ +
 
-    setup_logging(debug) # ログを設定
+    setup_logging() # ログを設定 (常にINFO）
     logger.info(f"CLIモードで実行します - モデル: {model_id}") # 実行情報ログ
     
     # ブラウザを初期化

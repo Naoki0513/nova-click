@@ -11,17 +11,23 @@ Playwright を使用したブラウザ操作の実装を提供します。
 
 import threading
 import queue
-import time
 import sys
 import asyncio
 import os
 import json
 import traceback
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Tuple
 
-# 相対インポートに修正
-from .utils import add_debug_log, debug_pause, is_debug_mode
+# 相対インポートを条件付きインポートの前に移動
+from .utils import add_debug_log
+
+# Windowsプラットフォームの場合のみ ctypes をインポート
+if sys.platform == "win32":
+    import ctypes
+# それ以外のプラットフォームの場合に tkinter をインポート
+else:
+    import tkinter
 
 # Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
@@ -30,8 +36,8 @@ if sys.platform == "win32":
 # コマンド／レスポンス用キュー
 _cmd_queue = queue.Queue()
 _res_queue = queue.Queue()
-_thread_started = False
-_browser_thread = None
+_thread_started = False  # pylint: disable=invalid-name
+_browser_thread = None  # pylint: disable=invalid-name
 
 # Cookie ファイルパス
 _COOKIE_FILE = "browser_cookies.json"
@@ -42,22 +48,46 @@ ALLOWED_ROLES = ['button', 'link', 'textbox', 'searchbox', 'combobox']
 # ブラウザ操作関連のロガー
 logger = logging.getLogger(__name__)
 
+# デフォルトタイムアウト(ms)
+DEFAULT_TIMEOUT_MS = 5000  # 5秒
+
+# Playwright の TimeoutError 型 (型チェック用)。
+try:
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # type: ignore
+except Exception:
+    # Playwright がインポートできない環境でもモジュールロードを継続するためのフォールバック
+    class PlaywrightTimeoutError(Exception):
+        pass
+
+# --- デバッグ関連のスタブ関数 ---
+#  過去のコード互換性のために残っている呼び出し箇所を安全に無効化する
+
+def is_debug_mode() -> bool:
+    """常に False を返すスタブ（旧デバッグモード互換用）"""
+    return False
+
+
+def debug_pause(msg: str = "") -> None:
+    """デバッグモードの一時停止を無効化するスタブ"""
+    add_debug_log(f"debug_pause 呼び出し: {msg} (スタブ)")
+
 # 画面解像度取得用の関数を追加
 def _get_screen_size() -> Tuple[int, int]:
     """デバイスの画面解像度を取得して返します。"""
     try:
         if sys.platform == "win32":
-            from ctypes import windll
-            width = windll.user32.GetSystemMetrics(0)
-            height = windll.user32.GetSystemMetrics(1)
+            # from ctypes import windll # 関数内のインポートを削除
+            width = ctypes.windll.user32.GetSystemMetrics(0) # ctypes.windll を使用
+            height = ctypes.windll.user32.GetSystemMetrics(1) # ctypes.windll を使用
         else:
-            import tkinter
+            # import tkinter # 関数内のインポートを削除
             root = tkinter.Tk()
             width = root.winfo_screenwidth()
             height = root.winfo_screenheight()
             root.destroy()
         add_debug_log(f"取得した画面解像度: {width}x{height}")
         return width, height
+    # 複数のプラットフォーム依存のエラーに対応するため、汎用例外をキャッチ
     except Exception as e:
         add_debug_log(f"スクリーンサイズ取得エラー: {e}", level="WARNING")
         return 1920, 1080
@@ -131,8 +161,6 @@ def get_aria_snapshot(wait_time: float = 0.5):
         # タイムアウト時の状態出力と一時停止
         current_url = get_current_url()
         add_debug_log(f"browser.get_aria_snapshot: タイムアウト URL={current_url}", level="ERROR")
-        if is_debug_mode():
-            debug_pause("ARIA Snapshot取得タイムアウトで停止")
         return {
             'status': 'error',
             'aria_snapshot': [],
@@ -189,8 +217,6 @@ def click_element(ref_id: int) -> Dict[str, Any]:
         add_debug_log("browser.click_element: タイムアウト", level="ERROR")
         current_url = get_current_url()
         add_debug_log(f"browser.click_element: タイムアウト URL={current_url}, ref_id={ref_id}", level="ERROR")
-        if is_debug_mode():
-            debug_pause("クリックタイムアウトで停止")
         error_res = {
             'status': 'error',
             'message': 'クリックタイムアウト',
@@ -253,8 +279,6 @@ def input_text(text: str, ref_id: int) -> Dict[str, Any]:
         # タイムアウト時の状態出力と一時停止
         current_url = get_current_url()
         add_debug_log(f"browser.input_text: タイムアウト URL={current_url}, ref_id={ref_id}, text='{text}'", level="ERROR")
-        if is_debug_mode():
-            debug_pause("テキスト入力タイムアウトで停止")
         error_res = {
             'status': 'error',
             'message': 'タイムアウト',
@@ -370,7 +394,7 @@ async def _async_worker():
         # 初期ページとしてGoogleを開く
         try:
             add_debug_log("ワーカースレッド: 初期ページ(Google)を読み込みます")
-            await page.goto("https://www.google.com/", wait_until="networkidle", timeout=0)
+            await page.goto("https://www.google.com/", wait_until="networkidle", timeout=DEFAULT_TIMEOUT_MS)
             
             # JavaScriptを使ってウィンドウにフォーカスを当てる
             await page.evaluate("""() => {
@@ -404,11 +428,21 @@ async def _async_worker():
                     
                     add_debug_log(f"ワーカースレッド: URL移動 {url}")
                     try:
-                        response = await page.goto(url, wait_until="domcontentloaded", timeout=0)
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
                         _res_queue.put({
                             "status": "success", 
                             "message": f"ページに移動: {url}",
                             "response_status": response.status if response else None
+                        })
+                    except PlaywrightTimeoutError as te:
+                        # タイムアウトエラー専用ハンドリング
+                        add_debug_log(f"ワーカースレッド: URL移動タイムアウト ({url})", level="ERROR")
+                        # 最新ARIA Snapshot を取得してリターン
+                        snapshot_list = await _take_aria_snapshot(page)
+                        _res_queue.put({
+                            "status": "error",
+                            "message": f"URL移動タイムアウト ({url}): {te}",
+                            "aria_snapshot": snapshot_list
                         })
                     except Exception as e:
                         # エラー情報とトレースバックをログ出力
@@ -417,7 +451,8 @@ async def _async_worker():
                         add_debug_log(f"ワーカースレッド: URL移動エラー詳細\n{tb}", level="DEBUG")
                         # エラー応答にトレースバックを含める
                         error_message = f"URL移動エラー: {e}"
-                        _res_queue.put({"status": "error", "message": error_message, "traceback": tb})
+                        snapshot_list = await _take_aria_snapshot(page)
+                        _res_queue.put({"status": "error", "message": error_message, "traceback": tb, "aria_snapshot": snapshot_list})
                         # デバッグモード時に停止
                         if is_debug_mode():
                             debug_pause("URL移動エラーで停止")
@@ -427,7 +462,7 @@ async def _async_worker():
                     add_debug_log("ワーカースレッド: ARIA Snapshot取得")
                     try:
                         # DOM読み込み待ちをスキップ（即時実行）
-                        await page.wait_for_load_state('domcontentloaded', timeout=0)
+                        await page.wait_for_load_state('domcontentloaded', timeout=DEFAULT_TIMEOUT_MS)
                         
                         # aria-snapshotを取得 (JavaScript評価)
                         aria_snapshot = await page.evaluate("""() => {
@@ -580,8 +615,18 @@ async def _async_worker():
                         locator = page.locator(selector)
                         # 最初のクリック試行（自動スクロール込み）。ビュー外エラー時はバウンディングボックス取得→window.scrollBy→scrollIntoView→再試行→forceクリック
                         try:
-                            await locator.click(timeout=0)
+                            await locator.click(timeout=DEFAULT_TIMEOUT_MS)
+                        except PlaywrightTimeoutError as te_click:
+                            add_debug_log("クリック操作タイムアウト", level="ERROR")
+                            snapshot_list = await _take_aria_snapshot(page)
+                            _res_queue.put({
+                                "status": "error",
+                                "message": f"クリックタイムアウト (ref_id={ref_id}): {te_click}",
+                                "aria_snapshot": snapshot_list
+                            })
+                            continue
                         except Exception as e_click:
+                            # fallback branch
                             msg = str(e_click)
                             if "outside of the viewport" in msg:
                                 add_debug_log("要素がビューポート外: 自動スクロール＆再試行を実行", level="WARNING")
@@ -605,10 +650,10 @@ async def _async_worker():
                                 await locator.evaluate("el => el.scrollIntoView({block: 'center', inline: 'center'})")
                                 # 再試行
                                 try:
-                                    await locator.click(timeout=0)
+                                    await locator.click(timeout=DEFAULT_TIMEOUT_MS)
                                 except Exception:
                                     add_debug_log("再試行失敗: forceオプションで強制クリックを実行", level="WARNING")
-                                    await locator.click(force=True, timeout=0)
+                                    await locator.click(force=True, timeout=DEFAULT_TIMEOUT_MS)
                             else:
                                 raise
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素をクリックしました"})
@@ -644,9 +689,19 @@ async def _async_worker():
                         locator = page.locator(selector)
                         # Locator API を使用して入力。自動待機やスクロールが組み込まれている
                         # クリアしてから入力
-                        await locator.fill("", timeout=0) # タイムアウト無効化
-                        await locator.fill(text, timeout=0) # タイムアウト無効化
-                        await locator.press("Enter", timeout=0) # タイムアウト無効化
+                        try:
+                            await locator.fill("", timeout=DEFAULT_TIMEOUT_MS)
+                            await locator.fill(text, timeout=DEFAULT_TIMEOUT_MS)
+                            await locator.press("Enter", timeout=DEFAULT_TIMEOUT_MS)
+                        except PlaywrightTimeoutError as te_input:
+                            add_debug_log("テキスト入力タイムアウト", level="ERROR")
+                            snapshot_list = await _take_aria_snapshot(page)
+                            _res_queue.put({
+                                "status": "error",
+                                "message": f"テキスト入力タイムアウト (ref_id={ref_id}): {te_input}",
+                                "aria_snapshot": snapshot_list
+                            })
+                            continue
                         _res_queue.put({"status": "success", "message": f"ref_id={ref_id} (selector={selector}) の要素にテキスト '{text}' を入力しました"})
                     except Exception as e:
                         current_url = "不明"
@@ -706,29 +761,72 @@ async def _async_worker():
             if browser:
                 await browser.close()
         except Exception as e:
-            add_debug_log(f"ワーカースレッド: 終了処理エラー: {e}")
+            add_debug_log(f"ワーカースレッド: 終了処理エラー: {e}") 
 
+async def _take_aria_snapshot(page):
+    """非同期で現在ページの簡易ARIA Snapshot(list)を取得します。
 
-def _worker_thread():
-    """ブラウザワーカーのメインスレッド処理"""
-    add_debug_log("ワーカースレッド: スレッド開始")
-    asyncio.run(_async_worker())
-    add_debug_log("ワーカースレッド: スレッド終了")
+    ワーカー内部から使用するため、`get_aria_snapshot` キューコマンドを利用しません。
+    失敗時は空リストを返します。
+    """
+    try:
+        # DOMContentLoaded を待つ（デフォルトタイムアウト採用）
+        try:
+            await page.wait_for_load_state('domcontentloaded', timeout=DEFAULT_TIMEOUT_MS)
+        except PlaywrightTimeoutError:
+            # ページ読み込みが完了しなくてもスナップショット取得を試みる
+            pass
 
+        aria_snapshot = await page.evaluate("""() => {
+            const snapshotResult = [];
+            let refIdCounter = 1;
+            const interactiveElements = document.querySelectorAll('button, a, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="textbox"], [role="searchbox"]');
+            interactiveElements.forEach(element => {
+                let role = element.getAttribute('role');
+                if (!role) {
+                    switch (element.tagName.toLowerCase()) {
+                        case 'button': role = 'button'; break;
+                        case 'a': role = 'link'; break;
+                        case 'input':
+                            switch (element.type) {
+                                case 'text': role = 'textbox'; break;
+                                case 'checkbox': role = 'checkbox'; break;
+                                case 'radio': role = 'radio'; break;
+                                case 'search': role = 'searchbox'; break;
+                                default: role = element.type; break;
+                            }
+                            break;
+                        case 'select': role = 'combobox'; break;
+                        case 'textarea': role = 'textbox'; break;
+                        default: role = 'unknown'; break;
+                    }
+                }
 
-def initialize_browser():
-    """ブラウザワーカースレッドを初期化して開始します"""
-    global _thread_started, _browser_thread
-    
-    if _thread_started:
-        add_debug_log("initialize_browser: すでにスレッドが開始されています")
-        return {"status": "success", "message": "ブラウザワーカーはすでに初期化されています"}
-    
-    add_debug_log("initialize_browser: ブラウザワーカースレッドを開始")
-    _browser_thread = threading.Thread(target=_worker_thread, daemon=True)
-    _browser_thread.start()
-    _thread_started = True
-    
-    add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
-    
-    return {"status": "success", "message": "ブラウザワーカーを初期化しました"} 
+                let name = '';
+                if (element.hasAttribute('aria-label')) {
+                    name = element.getAttribute('aria-label');
+                } else if (element.hasAttribute('placeholder')) {
+                    name = element.getAttribute('placeholder');
+                } else if (element.hasAttribute('name')) {
+                    name = element.getAttribute('name');
+                } else {
+                    name = (element.textContent || '').trim();
+                }
+
+                const refIdValue = refIdCounter++;
+                element.setAttribute('data-ref-id', `ref-${refIdValue}`);
+
+                const rect = element.getBoundingClientRect();
+                const isVisible = rect.width > 0 && rect.height > 0;
+
+                if (isVisible && role !== 'unknown') {
+                    snapshotResult.push({ role, name, ref_id: refIdValue });
+                }
+            });
+            return snapshotResult;
+        }""")
+
+        return aria_snapshot if isinstance(aria_snapshot, list) else []
+    except Exception as e:
+        add_debug_log(f"_take_aria_snapshot 失敗: {e}", level="WARNING")
+        return [] 
