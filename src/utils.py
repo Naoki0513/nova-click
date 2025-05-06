@@ -22,15 +22,19 @@ def setup_logging(debug: bool = False) -> None:
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    log_level = logging.DEBUG if debug else logging.INFO
+    is_ci = os.environ.get("CI", "false").lower() == "true"
+    log_level = logging.INFO if is_ci else (logging.DEBUG if debug else logging.INFO)
     root_logger.setLevel(log_level)
 
     # コンソールハンドラを作成・設定
     console_handler = logging.StreamHandler(sys.stdout) # 標準出力へ
     console_handler.setLevel(log_level)
 
-    # フォーマッタを設定
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    # フォーマッタを設定（CI環境ではより詳細な情報を含める）
+    if is_ci:
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s')
+    else:
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
     console_handler.setFormatter(formatter)
 
     # ハンドラをルートロガーに追加
@@ -159,4 +163,4 @@ def log_json_debug(name: str, data: Union[Dict[Any, Any], List[Any]], level: str
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(record, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"[{name}] ログファイルの書き込みに失敗しました: {e}") 
+            logger.error(f"[{name}] ログファイルの書き込みに失敗しました: {e}")  

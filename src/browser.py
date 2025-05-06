@@ -22,12 +22,20 @@ from typing import Dict, Any, Tuple
 # 相対インポートを条件付きインポートの前に移動
 from .utils import add_debug_log
 
+# ブラウザ操作関連のロガー
+logger = logging.getLogger(__name__)
+
+is_headless = os.environ.get("HEADLESS", "false").lower() == "true"
+
 # Windowsプラットフォームの場合のみ ctypes をインポート
 if sys.platform == "win32":
     import ctypes
-# それ以外のプラットフォームの場合に tkinter をインポート
-else:
-    import tkinter
+# それ以外のプラットフォームの場合、ヘッドレスモードでなければ tkinter をインポート
+elif not is_headless:
+    try:
+        import tkinter
+    except ImportError:
+        logger.warning("tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。")
 
 # Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
@@ -73,18 +81,25 @@ def debug_pause(msg: str = "") -> None:
 
 # 画面解像度取得用の関数を追加
 def _get_screen_size() -> Tuple[int, int]:
-    """デバイスの画面解像度を取得して返します。"""
+    """デバイスの画面解像度を取得して返します。ヘッドレスモードの場合はデフォルト値を返します。"""
+    if is_headless:
+        add_debug_log("ヘッドレスモード: デフォルト画面解像度 1920x1080 を使用")
+        return 1920, 1080
+        
     try:
         if sys.platform == "win32":
             # from ctypes import windll # 関数内のインポートを削除
             width = ctypes.windll.user32.GetSystemMetrics(0) # ctypes.windll を使用
             height = ctypes.windll.user32.GetSystemMetrics(1) # ctypes.windll を使用
-        else:
-            # import tkinter # 関数内のインポートを削除
+        elif 'tkinter' in sys.modules:
             root = tkinter.Tk()
             width = root.winfo_screenwidth()
             height = root.winfo_screenheight()
             root.destroy()
+        else:
+            add_debug_log("tkinterが利用できません: デフォルト画面解像度を使用", level="WARNING")
+            return 1920, 1080
+            
         add_debug_log(f"取得した画面解像度: {width}x{height}")
         return width, height
     # 複数のプラットフォーム依存のエラーに対応するため、汎用例外をキャッチ
@@ -364,7 +379,7 @@ async def _async_worker():
     ]
 
     browser = await playwright.chromium.launch(
-        headless=False,
+        headless=os.environ.get("HEADLESS", "false").lower() == "true",
         args=browser_launch_args,
     )
 
@@ -829,4 +844,4 @@ async def _take_aria_snapshot(page):
         return aria_snapshot if isinstance(aria_snapshot, list) else []
     except Exception as e:
         add_debug_log(f"_take_aria_snapshot 失敗: {e}", level="WARNING")
-        return [] 
+        return []        
