@@ -44,15 +44,26 @@ def test_normal_case(url, ref_id, text):
         return False
     
     elements = snap_res.get('aria_snapshot', [])
-    element_exists = any(e.get('ref_id') == ref_id for e in elements)
-    if not element_exists:
-        logging.error(f"指定されたref_id={ref_id}の要素が見つかりません")
-        return False
-    
     logging.info(f"取得した要素数: {len(elements)}")
+    
+    search_input_ref_id = None
+    if url.startswith("https://www.google.co"):
+        for elem in elements:
+            if elem.get('role') == 'textbox' and 'search' in str(elem.get('name', '')).lower():
+                search_input_ref_id = elem.get('ref_id')
+                logging.info(f"検索入力欄を発見: ref_id={search_input_ref_id}, name={elem.get('name')}")
+                break
+    
+    actual_ref_id = search_input_ref_id if search_input_ref_id is not None else ref_id
+    logging.info(f"テスト対象の要素: ref_id={actual_ref_id}")
+    
+    element_exists = any(e.get('ref_id') == actual_ref_id for e in elements)
+    if not element_exists:
+        logging.error(f"指定されたref_id={actual_ref_id}の要素が見つかりません")
+        return False
 
     # テキスト入力実行
-    input_res = input_text(text, ref_id)
+    input_res = input_text(text, actual_ref_id)
     if input_res.get("status") != "success":
         logging.error(f"テキスト入力に失敗しました: {input_res.get('message')}")
         return False
@@ -121,4 +132,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())     
+    sys.exit(main())       
