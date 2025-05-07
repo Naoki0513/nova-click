@@ -78,17 +78,43 @@ debug = True # デバッグモードを有効にする
 python -m unittest discover tests
 ```
 
-### 個別のテスト
+### 個別のテスト実行
 
 特定のテストを実行することも可能です。
 
 ```bash
-# コアロジックのテスト
-python -m unittest tests.test_core
+# ARIA Snapshotのテスト
+python tests/get_aria_snapshot.py
 
-# E2Eテスト
-python -m unittest tests.test_cli
+# クリック機能のテスト
+python tests/click_element_test.py
+
+# テキスト入力機能のテスト
+python tests/input_text_test.py
 ```
+
+### 環境変数
+
+テスト実行時には以下の環境変数を設定できます。
+
+```bash
+# ヘッドレスモードでテストを実行（CIに最適）
+HEADLESS=true python tests/get_aria_snapshot.py
+
+# CIモードでログ出力を最適化
+CI=true python tests/get_aria_snapshot.py
+```
+
+### CI/CD
+
+このプロジェクトはGitHub Actionsを使用した継続的インテグレーション（CI）を実装しています。
+メインブランチへのプッシュまたはプルリクエスト作成時に、自動的に以下のテストが実行されます：
+
+1. ARIA Snapshotのテスト
+2. クリック機能のテスト
+3. テキスト入力機能のテスト
+
+CIパイプラインでは、すべてのテストがヘッドレスモードで実行され、正常系と異常系の両方のテストケースが検証されます。
 
 ## 🔄 変更履歴
 
