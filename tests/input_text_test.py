@@ -46,6 +46,10 @@ def test_normal_case(url, ref_id, text):
     elements = snap_res.get('aria_snapshot', [])
     logging.info(f"取得した要素数: {len(elements)}")
     
+    logging.info("利用可能な要素一覧:")
+    for elem in elements:
+        logging.info(f"  ref_id={elem.get('ref_id')}, role={elem.get('role')}, name={elem.get('name')}")
+    
     search_input_ref_id = None
     
     if url.startswith("https://www.google.co"):
@@ -63,10 +67,21 @@ def test_normal_case(url, ref_id, text):
                 break
     
     if search_input_ref_id is None and url.startswith("https://www.google.co"):
-        for test_ref_id in [17, 18, 19, 20]:
-            if any(e.get('ref_id') == test_ref_id for e in elements):
-                search_input_ref_id = test_ref_id
-                logging.info(f"方法3で検索入力欄を発見: ref_id={search_input_ref_id}")
+        for test_ref_id in [17, 18, 20, 21, 22, 23]:  # ref_id=19はsubmitボタンなので除外
+            matching_elem = next((e for e in elements if e.get('ref_id') == test_ref_id), None)
+            if matching_elem:
+                if matching_elem.get('role') != 'button':
+                    search_input_ref_id = test_ref_id
+                    logging.info(f"方法3で検索入力欄を発見: ref_id={search_input_ref_id}, role={matching_elem.get('role')}")
+                    break
+                else:
+                    logging.info(f"ref_id={test_ref_id}はボタンなのでスキップします")
+    
+    if search_input_ref_id is None and url.startswith("https://www.google.co"):
+        for elem in elements:
+            if elem.get('role') not in ['button', 'link', 'heading', 'img']:
+                search_input_ref_id = elem.get('ref_id')
+                logging.info(f"方法4で検索入力欄を発見: ref_id={search_input_ref_id}, role={elem.get('role')}")
                 break
     
     actual_ref_id = search_input_ref_id if search_input_ref_id is not None else ref_id
@@ -156,4 +171,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())         
+    sys.exit(main())           
