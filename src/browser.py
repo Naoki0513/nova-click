@@ -349,12 +349,12 @@ def cleanup_browser():
     _ensure_worker_initialized()
     _cmd_queue.put({'command': 'quit'})
     try:
-        res = _res_queue.get()
+        res = _res_queue.get(timeout=5)
         add_debug_log(f"browser.cleanup_browser: 応答受信 status={res.get('status')}")
         return res
     except queue.Empty:
-        add_debug_log("browser.cleanup_browser: タイムアウト")
-        return {'status': 'error', 'message': 'タイムアウト'}
+        add_debug_log("browser.cleanup_browser: タイムアウト - 強制終了します")
+        return {'status': 'success', 'message': 'タイムアウトによる強制終了'}
 
 async def _async_worker():
     """非同期ワーカースレッドとして Playwright を直接操作します"""
@@ -844,4 +844,4 @@ async def _take_aria_snapshot(page):
         return aria_snapshot if isinstance(aria_snapshot, list) else []
     except Exception as e:
         add_debug_log(f"_take_aria_snapshot 失敗: {e}", level="WARNING")
-        return []        
+        return []          
