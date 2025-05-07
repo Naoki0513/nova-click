@@ -42,3 +42,6 @@ jobs:
     
     - name: Run input_text test
       run: python tests/input_text_test.py
+    
+    - name: Run main.py E2E test
+      run: python tests/main_e2e_test.py
