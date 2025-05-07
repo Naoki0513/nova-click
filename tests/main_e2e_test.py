@@ -258,16 +258,22 @@ def test_main_e2e():
 def main():
     parser = argparse.ArgumentParser(description='main.pyのE2Eテスト')
     parser.add_argument('--debug', action='store_true', help='デバッグモードを有効にする')
+    parser.add_argument('--timeout', type=int, default=60, help='テスト全体のタイムアウト（秒）')
     args = parser.parse_args()
 
     setup_logging(debug=args.debug or True)
     
     logging.info(f"main.py E2Eテスト開始: headless={os.environ.get('HEADLESS', 'false')}, CI={os.environ.get('CI', 'false')}")
 
+    start_time = time.time()
+    
     try:
         normal_success = test_normal_case()
         error_success = test_error_case()
         e2e_success = test_main_e2e()
+        
+        elapsed_time = time.time() - start_time
+        logging.info(f"テスト実行時間: {elapsed_time:.2f}秒")
         
         if normal_success and error_success and e2e_success:
             logging.info("すべてのテストが成功しました")
@@ -280,7 +286,15 @@ def main():
         traceback.print_exc()
         return 1
     finally:
-        cleanup_browser()
+        try:
+            cleanup_browser()
+            logging.info("ブラウザのクリーンアップが完了しました")
+        except Exception as e:
+            logging.error(f"ブラウザのクリーンアップ中にエラーが発生しました: {e}")
+            traceback.print_exc()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import time
+    exit_code = main()
+    logging.info(f"テストプロセスを終了します: exit_code={exit_code}")
+    sys.exit(exit_code)
