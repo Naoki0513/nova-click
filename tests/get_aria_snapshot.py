@@ -20,53 +20,68 @@ import traceback
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# pylint: disable=wrong-import-position
 from src.utils import setup_logging
 from src.browser import initialize_browser, goto_url, get_aria_snapshot
+from src import constants
+# pylint: enable=wrong-import-position
 
 # テスト用パラメータ
-URL = "https://www.google.com/"
+# URL = "https://www.google.com/" # constantsから参照
 DEBUG_MODE = False
 
+
 def main():
+    """
+    メイン実行関数 - ARIAスナップショットの取得テストを実行します。
+    コマンドライン引数でURLやデバッグモードを制御できます。
+    """
     parser = argparse.ArgumentParser(description='ARIAスナップショットのテスト')
     parser.add_argument('--debug', action='store_true', help='デバッグモードを有効にする')
-    parser.add_argument('--url', type=str, default=URL, help='テスト対象のURL')
+    parser.add_argument(
+        '--url',
+        type=str,
+        default=constants.TEST_DEFAULT_URL,
+        help='テスト対象のURL'
+    )
     args = parser.parse_args()
 
     setup_logging(debug=args.debug or DEBUG_MODE)
-    
+
     # テストパラメータを出力
-    logging.info(f"Test parameters: url={args.url}, headless={os.environ.get('HEADLESS', 'false')}")
+    logging.info("Test parameters: url=%s, headless=%s",
+                 args.url, os.environ.get('HEADLESS', 'false'))
 
     try:
         # ブラウザ起動
         init_res = initialize_browser()
         if init_res.get("status") != "success":
-            logging.error(f"ブラウザ初期化に失敗: {init_res.get('message')}")
+            logging.error("ブラウザ初期化に失敗: %s", init_res.get('message'))
             return 1
 
         # URLに移動
         goto_res = goto_url(args.url)
         if goto_res.get("status") != "success":
-            logging.error(f"URL移動に失敗: {goto_res.get('message')}")
+            logging.error("URL移動に失敗: %s", goto_res.get('message'))
             return 1
-        logging.info(f"ページに移動しました: {args.url}")
+        logging.info("ページに移動しました: %s", args.url)
 
         # ARIA Snapshot取得
         snap_res = get_aria_snapshot()
         if snap_res.get("status") != "success":
-            logging.error(f"ARIA Snapshot取得に失敗: {snap_res.get('message')}")
+            logging.error("ARIA Snapshot取得に失敗: %s", snap_res.get('message'))
             return 1
 
         snapshot = snap_res.get("aria_snapshot", [])
-        logging.info(f"取得した要素数: {len(snapshot)}")
+        logging.info("取得した要素数: %d", len(snapshot))
         print(json.dumps(snapshot, ensure_ascii=False, indent=2))
         return 0
-    except Exception as e:
-        logging.error(f"テスト実行中にエラーが発生しました: {e}")
+    except (RuntimeError, IOError) as e:
+        # より具体的な例外タイプを指定
+        logging.error("テスト実行中にエラーが発生しました: %s", e)
         traceback.print_exc()
         return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())
