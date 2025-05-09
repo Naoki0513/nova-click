@@ -32,7 +32,7 @@ def timeout_handler(_signum, _frame):
     sys.exit(1)
 
 
-# Windowsの場合、signal.alarm は利用できないため、警告を出す
+# Windowsの場合、signal.alarm は利用できない
 if sys.platform == "win32":
     logging.warning("Windows環境ではテストのタイムアウト処理が限定的になります。")
 
@@ -83,6 +83,7 @@ def test_normal_case(url, ref_id, text, operation_timeout=10):
     search_timeout = 3  # 要素検索のタイムアウト（秒）
     search_input_ref_id = None
 
+    # Googleの検索入力欄を探索する複数の方法
     if url.startswith("https://www.google.co") and time.time() - search_start_time < search_timeout:
         for elem in elements:
             if elem.get('role') == 'textbox' and ('search' in str(elem.get('name', '')).lower() or
@@ -107,7 +108,7 @@ def test_normal_case(url, ref_id, text, operation_timeout=10):
             time.time() - search_start_time < search_timeout):
         for test_ref_id in [17, 18, 20, 21, 22, 23]:  # ref_id=19はsubmitボタンなので除外
             if time.time() - search_start_time >= search_timeout:
-                break  # 検索タイムアウト
+                break
 
             matching_elem = next((e for e in elements if e.get('ref_id') == test_ref_id), None)
             if matching_elem:
@@ -139,6 +140,7 @@ def test_normal_case(url, ref_id, text, operation_timeout=10):
     if not element_exists:
         logging.error("指定されたref_id=%s の要素が見つかりません", actual_ref_id)
 
+        # フォールバック：別の入力可能要素を選択
         if elements:
             for elem in elements:
                 if elem.get('role') != 'button':
@@ -262,7 +264,6 @@ def main():
         else:
             logging.error("一部のテストが失敗しました")
             return 1
-    # より具体的な例外を捕捉
     except (RuntimeError, IOError) as e:
         if sys.platform != "win32":
             signal.alarm(0)

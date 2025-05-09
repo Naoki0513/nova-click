@@ -4,9 +4,8 @@ Bedrock API向けのツール定義とディスパッチモジュール
 LLMが利用可能なツールの定義と、ツール呼び出しをブラウザ操作関数に転送するディスパッチロジックを提供します。
 """
 
-# import json # 未使用のためコメントアウト
 import logging
-from typing import Any  # Dict, List を削除
+from typing import Any
 
 from .browser import click_element as browser_click_element
 from .browser import input_text as browser_input_text
@@ -15,9 +14,7 @@ from .utils import add_debug_log
 logger = logging.getLogger(__name__)
 
 
-def get_browser_tools_config() -> (
-    list[dict[str, Any]]
-):  # List, Dict を list, dict に変更
+def get_browser_tools_config() -> list[dict[str, Any]]:
     """利用可能なブラウザ操作ツールの設定を取得します"""
     return [
         {
@@ -99,7 +96,5 @@ def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[st
     else:
         add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")
         result = {"status": "error", "message": f"不明なツール: {tool_name}"}
-
-    # ARIAスナップショットがすでに結果に含まれているはずなので、追加の取得は行わない
 
     return result

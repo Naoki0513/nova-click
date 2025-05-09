@@ -35,10 +35,10 @@ def setup_logging(debug: bool = False) -> None:
     root_logger.setLevel(log_level)
 
     # コンソールハンドラを作成・設定
-    console_handler = logging.StreamHandler(sys.stdout)  # 標準出力へ
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
 
-    # フォーマッタを設定（CI環境ではより詳細な情報を含める）
+    # フォーマッタを設定
     if is_ci:
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s"
@@ -52,7 +52,7 @@ def setup_logging(debug: bool = False) -> None:
     # ハンドラをルートロガーに追加
     root_logger.addHandler(console_handler)
 
-    # 設定完了をINFOレベルでログ出力（ただしハンドラ追加後）
+    # 設定完了をログ出力
     root_logger.info("ログレベルを%sに設定しました", logging.getLevelName(log_level))
 
 
@@ -64,14 +64,10 @@ def load_credentials(file_path: str) -> dict[str, str] | None:
             full_path = file_path
         else:
             # 相対パスの場合はプロジェクトルートからの相対パスとして扱う
-            # 現在のファイルの場所を基準にプロジェクトルートへ
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(
-                current_dir
-            )  # src ディレクトリの親 = プロジェクトルート
+            project_root = os.path.dirname(current_dir)
             full_path = os.path.join(project_root, file_path)
 
-        # INFOレベルでログ出力 (add_debug_log を使わないように変更)
         logger.info("認証情報を読み込み中: %s", full_path)
         with open(full_path, "r", encoding="utf-8") as f:
             credentials = json.load(f)
@@ -117,9 +113,9 @@ def add_debug_log(
         except (AttributeError, ValueError):
             group = "Unknown"
         finally:
-            del frame  # 重要: フレームオブジェクトの参照を削除
+            del frame
 
-    # --- メッセージのフォーマット ---
+    # メッセージのフォーマット
     log_entry_message_for_logger = None
 
     if isinstance(msg, (dict, list)):
@@ -132,12 +128,10 @@ def add_debug_log(
     else:
         log_entry_message_for_logger = str(msg)
 
-    # --- 標準ロガーへの出力 ---
+    # 標準ロガーへの出力
     log_output = f"[{group}] {log_entry_message_for_logger}"
 
-    log_level_int = getattr(
-        logging, level.upper(), logging.DEBUG
-    )  # 文字列から数値レベルに変換
+    log_level_int = getattr(logging, level.upper(), logging.DEBUG)
 
     if log_level_int == logging.DEBUG:
         logger.debug(log_output)
@@ -150,14 +144,14 @@ def add_debug_log(
     elif log_level_int == logging.CRITICAL:
         logger.critical(log_output)
     else:
-        logger.log(log_level_int, log_output)  # 未知のレベルはlogメソッドで処理
+        logger.log(log_level_int, log_output)
 
 
 def log_json_debug(
     name: str, data: dict[Any, Any] | list[Any], level: str = "DEBUG"
 ) -> None:
     """
-    Pretty-print JSON data to logs if the specified log level is enabled.
+    JSONデータをログに出力し、さらにファイルにも保存します。
 
     Args:
         name: ロググループ名

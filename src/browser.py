@@ -17,92 +17,51 @@ import queue
 import sys
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from . import constants  # constants をインポート
-# 相対インポートを条件付きインポートの前に移動
+from . import constants
 from .utils import add_debug_log
 
-# ブラウザ操作関連のロガー
 logger = logging.getLogger(__name__)
 
 is_headless = os.environ.get("HEADLESS", "false").lower() == "true"
 
-# Windowsプラットフォームの場合のみ ctypes をインポート
 if sys.platform == "win32":
     import ctypes
+    TKINTER_MODULE = None 
+else:
+    if not is_headless:
+        try:
+            import tkinter as TKINTER_MODULE
+        except ImportError:
+            logger.warning(
+                "tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。"
+            )
+            TKINTER_MODULE = None
+    else:
+        TKINTER_MODULE = None
 
-    TKINTER_MODULE = None  # win32ではtkinterを直接使用しないためNoneに設定
-# それ以外のプラットフォームの場合、ヘッドレスモードでなければ tkinter をインポート
-elif not is_headless:
-    try:
-        import tkinter as TKINTER_MODULE  # tkinter を TKINTER_MODULEとしてインポート
-    except ImportError:
-        logger.warning(
-            "tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。"
-        )
-        TKINTER_MODULE = None  # tkinter がない場合は None を設定
-else:  # is_headless and not win32 の場合
-    TKINTER_MODULE = None
-
-# Windows での ProactorEventLoop 設定
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-# コマンド／レスポンス用キュー
 _cmd_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 _res_queue: queue.Queue[dict[str, Any]] = queue.Queue()
-_thread_started = False  # pylint: disable=invalid-name
-_browser_thread: threading.Thread | None = None  # pylint: disable=invalid-name
+_thread_started = False
+_browser_thread: threading.Thread | None = None
 
-# Cookie ファイルパス
-# _COOKIE_FILE = "browser_cookies.json" # constantsから参照
 
-# 操作可能な要素の role リスト (click_element と input_text がサポートする要素のみ)
-# ALLOWED_ROLES = ['button', 'link', 'textbox', 'searchbox', 'combobox'] # constantsから参照
-
-# ブラウザ操作関連のロガー
 logger = logging.getLogger(__name__)
-
-# デフォルトタイムアウト(ms)
-# DEFAULT_TIMEOUT_MS = 5000  # 5秒 # constants から参照
-
-# Playwright の TimeoutError 型 (型チェック用)。
-# try:
-#     from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # type: ignore
-#     if TYPE_CHECKING: # 型チェック時のみ Page をインポート
-#         from playwright.async_api import Page
-# except ImportError:
-#     # Playwright がインポートできない環境でもモジュールロードを継続するためのフォールバック
-#     class PlaywrightTimeoutError(Exception):
-#         pass
-#     if TYPE_CHECKING: # 型チェック時にもし playwright.async_api がなければ Page を Any にする
-#         Page = Any
-#     else: # 実行時は以前と同様のフォールバック
-#         Page = Any
-
-# playwright.async_api から Page と TimeoutError をインポート (フォールバック付き)
-# try:
-#     from playwright.async_api import Page
-# except ImportError:
-#     Page = Any  # type: ignore
 
 try:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 except ImportError:
-    # Playwright がインポートできない環境でもモジュールロードを継続するためのフォールバック
     class PlaywrightTimeoutError(Exception):
-        pass
+        """Playwrightのタイムアウトエラーのフォールバック定義。
+        
+        Playwrightをインポートできない場合に使用される代替クラス。
+        """
 
-    if (
-        TYPE_CHECKING
-    ):  # 型チェック時にもし playwright.async_api がなければ Page を Any にする
-        Page = Any
-    else:  # 実行時は以前と同様のフォールバック
-        Page = Any
-
-# --- デバッグ関連のスタブ関数 ---
-#  過去のコード互換性のために残っている呼び出し箇所を安全に無効化する
+Page = Any
 
 
 def is_debug_mode() -> bool:
@@ -114,24 +73,18 @@ def debug_pause(msg: str = "") -> None:
     """デバッグモードの一時停止を無効化するスタブ"""
     add_debug_log(f"debug_pause 呼び出し: {msg} (スタブ)")
 
-
-# 画面解像度取得用の関数を追加
 def _get_screen_size() -> tuple[int, int]:
     """デバイスの画面解像度を取得して返します。ヘッドレスモードの場合はデフォルト値を返します。"""
-    # グローバルスコープからtkinterを取得する代わりに、モジュールスコープのTKINTER_MODULEを使用
-    # TKINTER_MODULE = globals().get('tkinter') # この行を削除
-
     if is_headless:
         add_debug_log("ヘッドレスモード: デフォルト画面解像度 1920x1080 を使用")
         return 1920, 1080
 
     try:
         if sys.platform == "win32":
-            # from ctypes import windll # 関数内のインポートを削除
-            user32 = ctypes.windll.user32  # エイリアスを作成
+            user32 = ctypes.windll.user32
             width = user32.GetSystemMetrics(0)
             height = user32.GetSystemMetrics(1)
-        elif TKINTER_MODULE:  # TKINTER_MODULE が None でないことを確認
+        elif TKINTER_MODULE:
             root = TKINTER_MODULE.Tk()
             width = root.winfo_screenwidth()
             height = root.winfo_screenheight()
@@ -147,7 +100,7 @@ def _get_screen_size() -> tuple[int, int]:
     except (ctypes.ArgumentError, AttributeError) as e:
         add_debug_log(f"スクリーンサイズ取得エラー: {e}", level="WARNING")
         return 1920, 1080
-    except Exception as e:  # pylint: disable=broad-except # 万が一上記以外の場合
+    except Exception as e:
         if TKINTER_MODULE is not None and isinstance(e, TKINTER_MODULE.TclError):
             add_debug_log(f"スクリーンサイズ取得エラー (tkinter): {e}", level="WARNING")
         else:
@@ -164,7 +117,7 @@ def _worker_thread() -> None:
 
 def initialize_browser():
     """ブラウザワーカースレッドを初期化して開始します"""
-    global _thread_started, _browser_thread  # pylint: disable=global-statement
+    global _thread_started, _browser_thread
 
     if _thread_started:
         add_debug_log("initialize_browser: すでにスレッドが開始されています")
@@ -177,9 +130,6 @@ def initialize_browser():
     _browser_thread = threading.Thread(target=_worker_thread, daemon=True)
     _browser_thread.start()
     _thread_started = True
-
-    # ブラウザ起動待機を削除 (すぐに操作可能とみなす)
-    # time.sleepを無効化
 
     add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
 
@@ -196,8 +146,6 @@ def _ensure_worker_initialized() -> dict[str, str]:
 def get_aria_snapshot() -> dict[str, Any]:
     """ブラウザワーカースレッドからARIA Snapshot情報を取得し、
     button, link, combobox要素などをフラットリストで返します。"""
-    # 待機なしで即時ARIA Snapshot取得
-
     add_debug_log("browser.get_aria_snapshot: ARIAスナップショット取得要求送信")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "get_aria_snapshot"})
@@ -206,11 +154,10 @@ def get_aria_snapshot() -> dict[str, Any]:
         add_debug_log(f"browser.get_aria_snapshot: 応答受信 status={res.get('status')}")
 
         if res.get("status") == "success":
-            # 操作可能な要素のスナップショットのみを残す
             raw_snapshot = res.get("aria_snapshot", [])
             filtered_snapshot = [
                 e for e in raw_snapshot if e.get("role") in constants.ALLOWED_ROLES
-            ]  # ALLOWED_ROLES を使用
+            ]
             return {
                 "status": "success",
                 "aria_snapshot": filtered_snapshot,
@@ -226,16 +173,10 @@ def get_aria_snapshot() -> dict[str, Any]:
             }
     except queue.Empty:
         add_debug_log("browser.get_aria_snapshot: タイムアウト", level="ERROR")
-        # タイムアウト時の状態出力と一時停止
-        current_url = get_current_url()
-        add_debug_log(
-            f"browser.get_aria_snapshot: タイムアウト URL={current_url}", level="ERROR"
-        )
         return {
             "status": "error",
             "aria_snapshot": [],
             "message": "ARIA Snapshot取得タイムアウト",
-            "current_url": current_url,
         }
 
 
@@ -266,7 +207,6 @@ def click_element(ref_id: int) -> dict[str, Any]:
         add_debug_log("browser.click_element: ref_idが指定されていません")
         return {"status": "error", "message": "要素を特定するref_idが必要です"}
 
-    # クリック実行ログ
     add_debug_log(f"browser.click_element: ref_id={ref_id}の要素をクリック")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "click_element", "params": {"ref_id": ref_id}})
@@ -274,7 +214,6 @@ def click_element(ref_id: int) -> dict[str, Any]:
     try:
         res = _res_queue.get()
         add_debug_log(f"browser.click_element: 応答受信 status={res.get('status')}")
-        # クリック後のページ状態を取得してARIA Snapshotを返す
         try:
             aria_snapshot_result = get_aria_snapshot()
             res["aria_snapshot"] = aria_snapshot_result.get("aria_snapshot", [])
@@ -286,7 +225,7 @@ def click_element(ref_id: int) -> dict[str, Any]:
             add_debug_log(
                 f"browser.click_element: ARIA Snapshot取得エラー: {e}", level="WARNING"
             )
-        except RuntimeError as e:  # get_aria_snapshot が内部でエラーになる場合など
+        except RuntimeError as e:
             add_debug_log(
                 f"browser.click_element: ARIA Snapshot取得ランタイムエラー: {e}",
                 level="WARNING",
@@ -294,18 +233,11 @@ def click_element(ref_id: int) -> dict[str, Any]:
         return res
     except queue.Empty:
         add_debug_log("browser.click_element: タイムアウト", level="ERROR")
-        current_url = get_current_url()
-        add_debug_log(
-            f"browser.click_element: タイムアウト URL={current_url}, ref_id={ref_id}",
-            level="ERROR",
-        )
         error_res = {
             "status": "error",
             "message": "クリックタイムアウト",
             "ref_id": ref_id,
-            "current_url": current_url,
         }
-        # クリックに使用したセレクタを追加
         selector = f"[data-ref-id='ref-{ref_id}']"
         error_res["selector"] = selector
         try:
@@ -315,7 +247,6 @@ def click_element(ref_id: int) -> dict[str, Any]:
                 error_res["aria_snapshot_message"] = aria_res.get(
                     "message", "ARIA Snapshot取得失敗"
                 )
-            # 対象要素情報を追加
             elements = error_res.get("aria_snapshot", [])
             element_info = next(
                 (e for e in elements if e.get("ref_id") == ref_id), None
@@ -359,7 +290,6 @@ def input_text(text: str, ref_id: int) -> dict[str, Any]:
         res = _res_queue.get()
         add_debug_log(f"browser.input_text: 応答受信 status={res.get('status')}")
 
-        # 操作実行後のページ状態を取得しARIA Snapshotを返す
         try:
             aria_snapshot_result = get_aria_snapshot()
             res["aria_snapshot"] = aria_snapshot_result.get("aria_snapshot", [])
@@ -371,7 +301,7 @@ def input_text(text: str, ref_id: int) -> dict[str, Any]:
             add_debug_log(
                 f"browser.input_text: ARIA Snapshot取得エラー: {e}", level="WARNING"
             )
-        except RuntimeError as e:  # get_aria_snapshot が内部でエラーになる場合など
+        except RuntimeError as e:
             add_debug_log(
                 f"browser.input_text: ARIA Snapshot取得ランタイムエラー: {e}",
                 level="WARNING",
@@ -379,20 +309,12 @@ def input_text(text: str, ref_id: int) -> dict[str, Any]:
         return res
     except queue.Empty:
         add_debug_log("browser.input_text: タイムアウト", level="ERROR")
-        # タイムアウト時の状態出力と一時停止
-        current_url = get_current_url()
-        add_debug_log(
-            f"browser.input_text: タイムアウト URL={current_url}, ref_id={ref_id}, text='{text}'",
-            level="ERROR",
-        )
         error_res = {
             "status": "error",
             "message": "タイムアウト",
             "ref_id": ref_id,
             "text": text,
-            "current_url": current_url,
         }
-        # エラー時にもARIA Snapshotを取得して含める
         try:
             aria_snapshot_result = get_aria_snapshot()
             error_res["aria_snapshot"] = aria_snapshot_result.get("aria_snapshot", [])
@@ -454,10 +376,8 @@ async def _async_worker() -> None:
     """非同期ワーカースレッドとして Playwright を直接操作します"""
     add_debug_log("ワーカースレッド: 非同期ブラウザワーカー開始")
 
-    # 画面解像度を取得
     screen_width, screen_height = _get_screen_size()
 
-    # --- Playwright 起動 ---
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -469,7 +389,6 @@ async def _async_worker() -> None:
 
     playwright = await async_playwright().start()
 
-    # Chromium ブラウザを起動 (従来の BrowserConfig 相当の設定)
     browser_launch_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-features=IsolateOrigins",
@@ -484,7 +403,6 @@ async def _async_worker() -> None:
         args=browser_launch_args,
     )
 
-    # コンテキストを作成 (従来の BrowserContextConfig 相当)
     context = await browser.new_context(
         locale="ja-JP",
         ignore_https_errors=True,
@@ -493,12 +411,11 @@ async def _async_worker() -> None:
             (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     )
 
-    # Cookieファイルがあれば読み込む
-    if os.path.exists(constants.COOKIE_FILE):  # COOKIE_FILE を使用
+    if os.path.exists(constants.COOKIE_FILE):
         try:
             with open(
                 constants.COOKIE_FILE, "r", encoding="utf-8"
-            ) as f:  # COOKIE_FILE を使用
+            ) as f:
                 cookies = json.load(f)
             # Playwright 形式に合わせて add_cookies でセット
             await context.add_cookies(cookies)
@@ -519,7 +436,7 @@ async def _async_worker() -> None:
                 "https://www.google.com/",
                 wait_until="networkidle",
                 timeout=constants.DEFAULT_TIMEOUT_MS,
-            )  # DEFAULT_TIMEOUT_MS を使用
+            )
 
             # JavaScriptを使ってウィンドウにフォーカスを当てる
             await page.evaluate(
@@ -534,7 +451,7 @@ async def _async_worker() -> None:
             add_debug_log(
                 f"ワーカースレッド: 初期ページの読み込みでエラーが発生しました: {e}"
             )
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             add_debug_log(
                 f"ワーカースレッド: 初期ページの読み込みで予期せぬエラーが発生しました: {e}"
             )
@@ -554,78 +471,14 @@ async def _async_worker() -> None:
                     )
                     break
 
-                elif command == "goto":
-                    # URLに移動
-                    url = params.get("url", "")
-                    if not url:
-                        _res_queue.put(
-                            {"status": "error", "message": "URLが指定されていません"}
-                        )
-                        continue
-
-                    add_debug_log(f"ワーカースレッド: URL移動 {url}")
-                    try:
-                        response = await page.goto(
-                            url,
-                            wait_until="domcontentloaded",
-                            timeout=constants.DEFAULT_TIMEOUT_MS,
-                        )  # DEFAULT_TIMEOUT_MS を使用
-                        _res_queue.put(
-                            {
-                                "status": "success",
-                                "message": f"ページに移動: {url}",
-                                "response_status": (
-                                    response.status if response else None
-                                ),
-                            }
-                        )
-                    except PlaywrightTimeoutError as te:
-                        # タイムアウトエラー専用ハンドリング
-                        add_debug_log(
-                            f"ワーカースレッド: URL移動タイムアウト ({url})",
-                            level="ERROR",
-                        )
-                        # 最新ARIA Snapshot を取得してリターン
-                        snapshot_list = await _take_aria_snapshot(page)
-                        _res_queue.put(
-                            {
-                                "status": "error",
-                                "message": f"URL移動タイムアウト ({url}): {te}",
-                                "aria_snapshot": snapshot_list,
-                            }
-                        )
-                    except Exception as e:  # pylint: disable=broad-except
-                        # エラー情報とトレースバックをログ出力
-                        add_debug_log(str(e), level="ERROR")
-                        tb = traceback.format_exc()
-                        add_debug_log(
-                            f"ワーカースレッド: URL移動エラー詳細\n{tb}", level="DEBUG"
-                        )
-                        # エラー応答にトレースバックを含める
-                        error_message = (
-                            f"URL移動エラー: {e}"
-                        )
-                        snapshot_list = await _take_aria_snapshot(page)
-                        _res_queue.put(
-                            {
-                                "status": "error",
-                                "message": error_message,
-                                "traceback": tb,
-                                "aria_snapshot": snapshot_list,
-                            }
-                        )
-                        # デバッグモード時に停止
-                        if is_debug_mode():
-                            debug_pause("URL移動エラーで停止")
-
                 elif command == "get_aria_snapshot":
                     # ページのARIA Snapshotを取得
                     add_debug_log("ワーカースレッド: ARIA Snapshot取得")
                     try:
-                        # DOM読み込み待ちをスキップ（即時実行）
+                        # DOM読み込み待ち
                         await page.wait_for_load_state(
                             "domcontentloaded", timeout=constants.DEFAULT_TIMEOUT_MS
-                        )  # DEFAULT_TIMEOUT_MS を使用
+                        )
 
                         # aria-snapshotを取得 (JavaScript評価)
                         aria_snapshot = await page.evaluate(
@@ -764,7 +617,7 @@ async def _async_worker() -> None:
                         current_url = "不明"
                         try:
                             current_url = page.url
-                        except Exception as url_e:  # pylint: disable=broad-except
+                        except Exception as url_e:
                             add_debug_log(
                                 f"ワーカースレッド: ARIA Snapshot取得エラー時のURL取得失敗: {url_e}"
                             )
@@ -795,11 +648,11 @@ async def _async_worker() -> None:
                             f"ワーカースレッド: クリック対象セレクタ: {selector}"
                         )
                         locator = page.locator(selector)
-                        # 最初のクリック試行（自動スクロール込み）。ビュー外エラー時はバウンディングボックス取得→window.scrollBy→scrollIntoView→再試行→forceクリック
+                        # クリック試行（自動スクロール込み）。ビュー外エラー時はバウンディングボックス取得→window.scrollBy→scrollIntoView→再試行→forceクリック
                         try:
                             await locator.click(
                                 timeout=constants.DEFAULT_TIMEOUT_MS
-                            )  # DEFAULT_TIMEOUT_MS を使用
+                            )
                         except PlaywrightTimeoutError as te_click:
                             add_debug_log("クリック操作タイムアウト", level="ERROR")
                             snapshot_list = await _take_aria_snapshot(page)
@@ -811,7 +664,7 @@ async def _async_worker() -> None:
                                 }
                             )
                             continue
-                        except Exception as e_click:  # pylint: disable=broad-except
+                        except Exception as e_click:
                             # fallback branch
                             msg = str(e_click)
                             if "outside of the viewport" in msg:
@@ -855,7 +708,7 @@ async def _async_worker() -> None:
                                     await locator.click(
                                         timeout=constants.DEFAULT_TIMEOUT_MS
                                     )
-                                except Exception:  # pylint: disable=broad-except
+                                except Exception:
                                     add_debug_log(
                                         "再試行失敗: forceオプションで強制クリックを実行",
                                         level="WARNING",
@@ -871,12 +724,12 @@ async def _async_worker() -> None:
                                 "message": f"ref_id={ref_id} (selector={selector}) の要素をクリックしました",
                             }
                         )
-                    except Exception as e:  # pylint: disable=broad-except
+                    except Exception as e:
                         # locator.bounding_box() やその他の予期せぬエラー
                         current_url = "不明"
                         try:
                             current_url = page.url
-                        except Exception as url_e:  # pylint: disable=broad-except
+                        except Exception as url_e:
                             add_debug_log(
                                 f"ワーカースレッド: 要素クリック時の予期せぬエラーでのURL取得失敗: {url_e}"
                             )
@@ -930,13 +783,13 @@ async def _async_worker() -> None:
                         try:
                             await locator.fill(
                                 "", timeout=constants.DEFAULT_TIMEOUT_MS
-                            )  # DEFAULT_TIMEOUT_MS を使用
+                            )
                             await locator.fill(
                                 text, timeout=constants.DEFAULT_TIMEOUT_MS
-                            )  # DEFAULT_TIMEOUT_MS を使用
+                            )
                             await locator.press(
                                 "Enter", timeout=constants.DEFAULT_TIMEOUT_MS
-                            )  # DEFAULT_TIMEOUT_MS を使用
+                            )
                         except PlaywrightTimeoutError as te_input:
                             add_debug_log("テキスト入力タイムアウト", level="ERROR")
                             snapshot_list = await _take_aria_snapshot(page)
@@ -957,12 +810,12 @@ async def _async_worker() -> None:
                                 ),
                             }
                         )
-                    except Exception as e:  # pylint: disable=broad-except
+                    except Exception as e:
                         # locator.fill や locator.press("Enter") での予期せぬエラー
                         current_url = "不明"
                         try:
                             current_url = page.url
-                        except Exception as url_e:  # pylint: disable=broad-except
+                        except Exception as url_e:
                             add_debug_log(
                                 f"ワーカースレッド: テキスト入力時の予期せぬエラーでのURL取得失敗: {url_e}"
                             )
@@ -977,40 +830,6 @@ async def _async_worker() -> None:
                         if is_debug_mode():
                             debug_pause("テキスト入力時の予期せぬエラーで停止")
 
-                elif command == "get_current_url":
-                    # 現在のURLを取得
-                    add_debug_log("ワーカースレッド: 現在のURL取得")
-                    try:
-                        url = page.url
-                        _res_queue.put({"status": "success", "url": url})
-                    except Exception as e:  # pylint: disable=broad-except
-                        add_debug_log(f"ワーカースレッド: URL取得エラー: {e}")
-                        _res_queue.put(
-                            {"status": "error", "message": f"URL取得エラー: {e}"}
-                        )
-
-                elif command == "save_cookies":
-                    # Cookieを保存
-                    add_debug_log("ワーカースレッド: Cookie保存")
-                    try:
-                        # Playwright BrowserContext から Cookie を取得
-                        cookies = await context.cookies()
-                        with open(
-                            constants.COOKIE_FILE, "w", encoding="utf-8"
-                        ) as f:  # COOKIE_FILE を使用
-                            json.dump(cookies, f, ensure_ascii=False, indent=2)
-                        _res_queue.put(
-                            {
-                                "status": "success",
-                                "message": f"{len(cookies)}件のCookieを保存しました",
-                            }
-                        )
-                    except (FileNotFoundError, OSError, TypeError) as e:
-                        add_debug_log(f"ワーカースレッド: Cookie保存エラー: {e}")
-                        _res_queue.put(
-                            {"status": "error", "message": f"Cookie保存エラー: {e}"}
-                        )
-
                 else:
                     # 未知のコマンド
                     add_debug_log(f"ワーカースレッド: 未知のコマンド: {command}")
@@ -1021,7 +840,7 @@ async def _async_worker() -> None:
             except queue.Empty:
                 # コマンドがない場合は少し待機
                 await asyncio.sleep(0.1)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 # その他の例外
                 add_debug_log(f"ワーカースレッド: 予期せぬエラー: {e}")
                 try:
@@ -1037,7 +856,7 @@ async def _async_worker() -> None:
         try:
             if 'browser' in locals():
                 await browser.close()
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             add_debug_log(f"ワーカースレッド: 終了処理エラー: {e}")
 
 
@@ -1048,11 +867,11 @@ async def _take_aria_snapshot(page: Any) -> list[dict[str, Any]]:
     失敗時は空リストを返します。
     """
     try:
-        # DOMContentLoaded を待つ（デフォルトタイムアウト採用）
+        # DOMContentLoaded を待つ
         try:
             await page.wait_for_load_state(
                 "domcontentloaded", timeout=constants.DEFAULT_TIMEOUT_MS
-            )  # DEFAULT_TIMEOUT_MS を使用
+            )
         except PlaywrightTimeoutError:
             # ページ読み込みが完了しなくてもスナップショット取得を試みる
             pass
@@ -1112,6 +931,6 @@ async def _take_aria_snapshot(page: Any) -> list[dict[str, Any]]:
     except PlaywrightTimeoutError as e:
         add_debug_log(f"_take_aria_snapshot 失敗: {e}", level="WARNING")
         return []
-    except Exception as e:  # pylint: disable=broad-except
+    except Exception as e:
         add_debug_log(f"_take_aria_snapshot 予期せぬ失敗: {e}", level="WARNING")
         return []

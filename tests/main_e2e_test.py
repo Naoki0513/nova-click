@@ -10,7 +10,6 @@ stopReasonが「endTurn」で終わることを検証します。
 """
 
 import argparse
-# import json # 未使用のためコメントアウト
 import logging
 import os
 import sys
@@ -25,7 +24,6 @@ from src.bedrock import (  # pylint: disable=wrong-import-position,import-error
     analyze_stop_reason, call_bedrock_api)
 from src.browser import (  # pylint: disable=wrong-import-position,import-error
     cleanup_browser, get_aria_snapshot, goto_url, initialize_browser)
-# 以下のインポートはsys.pathを設定した後に行う必要があるため、ここに配置
 from src.utils import \
     setup_logging  # pylint: disable=wrong-import-position,import-error
 

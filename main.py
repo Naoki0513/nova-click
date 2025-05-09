@@ -6,7 +6,7 @@ import logging
 import sys
 from typing import Any
 
-from src import constants  # constants をインポート
+from src import constants
 from src.bedrock import (analyze_stop_reason, call_bedrock_api,
                          create_bedrock_client, extract_tool_calls,
                          update_token_usage)
@@ -22,18 +22,16 @@ from src.utils import load_credentials, setup_logging
 logger = logging.getLogger(__name__)
 
 
-# CLIモードの実行関数 (引数なし)
 def run_cli_mode() -> int:
     """CLIモードでブラウザ操作エージェントを実行します。"""
-    # --- ここで実行パラメータを設定 --- +
-    query = constants.DEFAULT_QUERY  # 固定のクエリ
+    # 実行パラメータを設定
+    query = constants.DEFAULT_QUERY
     model_id = constants.DEFAULT_MODEL_ID
     credentials_path = constants.DEFAULT_CREDENTIALS_PATH
-    max_turns = constants.DEFAULT_MAX_TURNS  # 最大対話ターン数
-    # ------------------------------------ +
+    max_turns = constants.DEFAULT_MAX_TURNS
 
-    setup_logging()  # ログを設定 (常にINFO）
-    logger.info("CLIモードで実行します - モデル: %s", model_id)  # 実行情報ログ
+    setup_logging()
+    logger.info("CLIモードで実行します - モデル: %s", model_id)
 
     # ブラウザを初期化
     init_result = initialize_browser()
@@ -76,7 +74,7 @@ def run_cli_mode() -> int:
     )
     if not current_aria_snapshot:
         logger.error(
-            "ARIA Snapshotの取得に失敗しました: %s",
+            "ARIA Snapshot取得に失敗しました: %s",
             aria_snapshot_result.get("message", "不明なエラー"),
         )
 
@@ -164,8 +162,8 @@ def run_cli_mode() -> int:
     # 最大ターン数超過チェック
     if turn_count >= max_turns:
         logger.warning("最大ターン数 (%s) に達したため、処理を終了します。", max_turns)
-        if result["status"] == "success":  # 他のエラーが発生していなければ
-            result["status"] = "error"  # 最大ターン到達もエラー扱いにする場合
+        if result["status"] == "success":
+            result["status"] = "error"
             result["message"] = f"最大ターン数 ({max_turns}) に達しました。"
 
     # ブラウザを終了
@@ -193,8 +191,6 @@ def run_cli_mode() -> int:
 
 def main() -> int:
     """メインエントリーポイント"""
-
-    # 引数なしでCLIモードを実行
     return run_cli_mode()
 
 

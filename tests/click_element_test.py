@@ -18,9 +18,6 @@ import traceback
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# import json # 未使用のためコメントアウト
-
-# リファクタリング後の新しいインポートパス
 # pylint: disable=wrong-import-position
 from src.browser import initialize_browser, goto_url, get_aria_snapshot, click_element
 from src.utils import setup_logging

@@ -22,10 +22,10 @@ def get_inference_config(model_id: str) -> dict[str, Any]:
     """モデルごとに最適な推論パラメータを返す"""
     cfg = {"maxTokens": 3000}
 
-    if "amazon.nova" in model_id:  # Nova 系
+    if "amazon.nova" in model_id:
         cfg.update({"topP": 1, "temperature": 1})
-    elif "anthropic.claude" in model_id:  # Claude 系（必要なら）
-        cfg.update({"temperature": 0})  # 例
+    elif "anthropic.claude" in model_id:
+        cfg.update({"temperature": 0})
     return cfg
 
 
@@ -78,7 +78,7 @@ def call_bedrock_api(
     except Exception as e:
         err_msg = str(e)
         add_debug_log(f"Bedrock API呼び出しエラー: {err_msg}")
-        raise  # 呼び出し元でエラーハンドリングできるように再スロー
+        raise
 
 
 def analyze_stop_reason(stop_reason: str) -> dict[str, Any]:
@@ -120,7 +120,7 @@ def analyze_stop_reason(stop_reason: str) -> dict[str, Any]:
             "message": f"停止理由: {stop_reason}",
         }
 
-    # stop_reason が null や空文字の場合 (通常は発生しないはず)
+    # stop_reason が null や空文字の場合
     add_debug_log("Stop reasonが不明です。予期せぬ状態のためループを終了します。")
     return {
         "should_continue": False,
@@ -150,7 +150,6 @@ def create_bedrock_client(credentials: dict[str, str]) -> Any:
     Returns:
         Bedrock ランタイムクライアント
     """
-    # Bedrock クライアントを作成
     bedrock_runtime = boto3.client(
         service_name="bedrock-runtime",
         region_name="us-west-2",

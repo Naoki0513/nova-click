@@ -13,7 +13,3 @@ DEFAULT_QUERY = (
 DEFAULT_MODEL_ID = "us.amazon.nova-pro-v1:0"
 DEFAULT_CREDENTIALS_PATH = "credentials/aws_credentials.json"
 DEFAULT_MAX_TURNS = 20
-
-# tests 用のデフォルト値
-TEST_DEFAULT_URL = "https://www.google.com/"
-INPUT_TEXT_TEST_TIMEOUT = 60
