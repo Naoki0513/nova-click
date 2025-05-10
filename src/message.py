@@ -266,6 +266,11 @@ def run_cli_mode() -> int:  # noqa: D401
         messages_for_api = add_assistant_message(messages_for_api, message_content)
         result["messages"] = add_assistant_message(result["messages"], message_content)
 
+        # アシスタントのテキストメッセージをリアルタイムで表示
+        for content in message_content:
+            if "text" in content:
+                print(f"\n{content['text']}\n")
+
         # ツール呼び出しの抽出
         tool_calls = extract_tool_calls(message_content)
 
@@ -310,13 +315,8 @@ def run_cli_mode() -> int:  # noqa: D401
     # ブラウザ終了
     cleanup_browser()
 
-    # 結果表示
+    # 結果表示（削除）
     logger.info("処理が完了しました")
-    for msg in result.get("messages", []):
-        if msg.get("role") == "assistant":
-            for content in msg.get("content", []):
-                if "text" in content:
-                    print(f"\n{content['text']}\n")
 
     # トークン使用量を表示
     token_usage = result.get("token_usage", {})

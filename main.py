@@ -34,7 +34,7 @@ DEFAULT_TIMEOUT_MS = 5000  # 5 秒
 DEFAULT_QUERY = (
     "Amazonでイヤホンを調べてカートに入れてください。そのあとカートを開いてください。"
 )
-DEFAULT_MODEL_ID = "us.amazon.nova-pro-v1:0"
+DEFAULT_MODEL_ID = "us.amazon.nova-lite-v1:0"
 DEFAULT_CREDENTIALS_PATH = "credentials/aws_credentials.json"
 DEFAULT_MAX_TURNS = 20
 
