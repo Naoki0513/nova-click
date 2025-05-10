@@ -5,7 +5,6 @@
 主な責務:
 1. ヘッドレスモード判定 (環境変数 ``HEADLESS``)
 2. 画面解像度取得 (`get_screen_size`)
-3. デバッグ用スタブ (`is_debug_mode`, `debug_pause`)
 
 ``is_headless`` は他モジュールからインポートされる定数のため
 モジュールロード時に決定します。
@@ -50,24 +49,6 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # ---------------------------------------------------------------------------
-# デバッグ関連スタブ
-# ---------------------------------------------------------------------------
-
-def is_debug_mode() -> bool:  # noqa: D401
-    """デバッグモード判定のスタブ。常に ``False`` を返します。"""
-
-    return False
-
-
-def debug_pause(msg: str | None = "") -> None:  # noqa: D401
-    """デバッグ時の一時停止を行うスタブ。
-
-    実際には停止せず、デバッグログを出力するのみです。
-    """
-
-    add_debug_log(f"debug_pause 呼び出し: {msg} (スタブ)")
-
-# ---------------------------------------------------------------------------
 # 画面サイズ取得
 # ---------------------------------------------------------------------------
 
@@ -109,7 +90,5 @@ def get_screen_size() -> Tuple[int, int]:  # noqa: D401
 
 __all__ = [
     "is_headless",
-    "is_debug_mode",
-    "debug_pause",
     "get_screen_size",
 ] 

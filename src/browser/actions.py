@@ -19,11 +19,9 @@ import traceback
 from typing import Any, Dict
 
 import main as constants
-from ..utils import add_debug_log
+from ..utils import add_debug_log, log_operation_error
 from .utils import (
-    debug_pause,
     get_screen_size,
-    is_debug_mode,
     is_headless,
 )
 from . import snapshot as snapshot_mod
@@ -129,10 +127,24 @@ def click_element(ref_id: int) -> Dict[str, Any]:
         res = _res_queue.get()
         add_debug_log(f"browser.click_element: 応答受信 status={res.get('status')}")
         _append_snapshot_to_response(res)
+        
+        # エラー発生時はINFOレベルでログ出力
+        if res.get("status") != "success":
+            log_operation_error(
+                "click_element",
+                res.get("message", "不明なエラー"),
+                {"ref_id": ref_id}
+            )
+            
         return res
     except queue.Empty:
-        add_debug_log("browser.click_element: タイムアウト", level="ERROR")
-        error_res: Dict[str, Any] = {"status": "error", "message": "クリックタイムアウト", "ref_id": ref_id}
+        error_msg = "クリックタイムアウト"
+        add_debug_log(f"browser.click_element: {error_msg}", level="ERROR")
+        
+        # タイムアウトエラーをINFOレベルでログ出力
+        log_operation_error("click_element", error_msg, {"ref_id": ref_id})
+        
+        error_res: Dict[str, Any] = {"status": "error", "message": error_msg, "ref_id": ref_id}
         _append_snapshot_to_response(error_res)
         return error_res
 
@@ -155,10 +167,24 @@ def input_text(text: str, ref_id: int) -> Dict[str, Any]:
         res = _res_queue.get()
         add_debug_log(f"browser.input_text: 応答受信 status={res.get('status')}")
         _append_snapshot_to_response(res)
+        
+        # エラー発生時はINFOレベルでログ出力
+        if res.get("status") != "success":
+            log_operation_error(
+                "input_text",
+                res.get("message", "不明なエラー"),
+                {"ref_id": ref_id, "text": text}
+            )
+            
         return res
     except queue.Empty:
-        add_debug_log("browser.input_text: タイムアウト", level="ERROR")
-        error_res: Dict[str, Any] = {"status": "error", "message": "タイムアウト", "ref_id": ref_id, "text": text}
+        error_msg = "テキスト入力タイムアウト"
+        add_debug_log(f"browser.input_text: {error_msg}", level="ERROR")
+        
+        # タイムアウトエラーをINFOレベルでログ出力
+        log_operation_error("input_text", error_msg, {"ref_id": ref_id, "text": text})
+        
+        error_res: Dict[str, Any] = {"status": "error", "message": error_msg, "ref_id": ref_id, "text": text}
         _append_snapshot_to_response(error_res)
         return error_res
 
@@ -338,8 +364,6 @@ async def _async_worker() -> None:  # noqa: C901
                     error_msg = f"ARIA Snapshot取得エラー: {e}"
                     add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
                     _res_queue.put({"status": "error", "message": error_msg})
-                    if is_debug_mode():
-                        debug_pause("ARIA Snapshot取得エラーで停止")
 
             # 要素クリック ------------------------------------------------------
             elif command == "click_element":
@@ -355,9 +379,11 @@ async def _async_worker() -> None:  # noqa: C901
                     try:
                         await locator.click(timeout=constants.DEFAULT_TIMEOUT_MS)
                     except PlaywrightTimeoutError as te_click:
+                        error_msg = f"クリックタイムアウト (ref_id={ref_id}): {te_click}"
                         add_debug_log("クリック操作タイムアウト", level="ERROR")
+                        log_operation_error("click_element", error_msg, {"ref_id": ref_id})
                         snapshot_list = await snapshot_mod.take_aria_snapshot(page)
-                        _res_queue.put({"status": "error", "message": f"クリックタイムアウト (ref_id={ref_id}): {te_click}", "aria_snapshot": snapshot_list})
+                        _res_queue.put({"status": "error", "message": error_msg, "aria_snapshot": snapshot_list})
                         continue
                     except Exception as e_click:
                         msg = str(e_click)
@@ -386,10 +412,9 @@ async def _async_worker() -> None:  # noqa: C901
                     current_url = page.url if hasattr(page, "url") else "不明"
                     error_msg = f"要素クリック時の予期せぬエラー (ref_id={ref_id}): {e}"
                     add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                    log_operation_error("click_element", error_msg, {"ref_id": ref_id, "url": current_url})
                     tb = traceback.format_exc()
                     _res_queue.put({"status": "error", "message": error_msg, "traceback": tb})
-                    if is_debug_mode():
-                        debug_pause("要素クリック時の予期せぬエラーで停止")
 
             # テキスト入力 ------------------------------------------------------
             elif command == "input_text":
@@ -411,18 +436,19 @@ async def _async_worker() -> None:  # noqa: C901
                         await locator.fill(text, timeout=constants.DEFAULT_TIMEOUT_MS)
                         await locator.press("Enter", timeout=constants.DEFAULT_TIMEOUT_MS)
                     except PlaywrightTimeoutError as te_input:
+                        error_msg = f"テキスト入力タイムアウト (ref_id={ref_id}): {te_input}"
                         add_debug_log("テキスト入力タイムアウト", level="ERROR")
+                        log_operation_error("input_text", error_msg, {"ref_id": ref_id, "text": text})
                         snapshot_list = await snapshot_mod.take_aria_snapshot(page)
-                        _res_queue.put({"status": "error", "message": f"テキスト入力タイムアウト (ref_id={ref_id}): {te_input}", "aria_snapshot": snapshot_list})
+                        _res_queue.put({"status": "error", "message": error_msg, "aria_snapshot": snapshot_list})
                         continue
                     _res_queue.put({"status": "success", "message": f"ref_id={ref_id} の要素にテキスト '{text}' を入力しました"})
                 except Exception as e:
                     current_url = page.url if hasattr(page, "url") else "不明"
                     error_msg = f"テキスト入力時の予期せぬエラー (ref_id={ref_id}, text='{text}'): {e}"
                     add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                    log_operation_error("input_text", error_msg, {"ref_id": ref_id, "text": text, "url": current_url})
                     _res_queue.put({"status": "error", "message": error_msg})
-                    if is_debug_mode():
-                        debug_pause("テキスト入力時の予期せぬエラーで停止")
 
             # Cookie 保存 -------------------------------------------------------
             elif command == "save_cookies":

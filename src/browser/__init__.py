@@ -9,7 +9,7 @@ from .actions import (
     cleanup_browser,
 )
 
-from .utils import is_debug_mode, debug_pause
+from .utils import is_headless, get_screen_size
 
 __all__: list[str] = [
     "initialize_browser",
@@ -20,6 +20,6 @@ __all__: list[str] = [
     "get_current_url",
     "save_cookies",
     "cleanup_browser",
-    "is_debug_mode",
-    "debug_pause",
+    "is_headless",
+    "get_screen_size",
 ] 

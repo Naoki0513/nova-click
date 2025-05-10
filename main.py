@@ -9,6 +9,9 @@
 # ユーザー設定用定数（必要に応じて変更してください）
 # ---------------------------------------------------------------------------
 
+# ログレベル設定 ("DEBUG", "INFO", "WARNING", "ERROR")
+LOG_LEVEL = "INFO"
+
 # Cookie 保存先
 COOKIE_FILE = "browser_cookies.json"
 

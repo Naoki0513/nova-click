@@ -17,21 +17,28 @@ from typing import Any, Union
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(debug: bool = False) -> None:
+def setup_logging() -> None:
     """
     アプリケーション全体のロギング設定を行います。
-
-    引数:
-        debug: デバッグモードを有効にするかどうか。Trueの場合、ログレベルはDEBUGに設定されます。
+    main.pyで設定されたLOG_LEVELを参照して、ログレベルを設定します。
     """
+    import main as constants
+    
     root_logger = logging.getLogger()
 
     # 既存のハンドラをすべて削除（設定の重複を防ぐため）
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
+    # ログレベルの設定
     is_ci = os.environ.get("CI", "false").lower() == "true"
-    log_level = logging.INFO if is_ci else (logging.DEBUG if debug else logging.INFO)
+    log_level_name = constants.LOG_LEVEL if hasattr(constants, "LOG_LEVEL") else "INFO"
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    
+    # CI環境の場合は常にINFOレベル以上を表示
+    if is_ci and log_level > logging.INFO:
+        log_level = logging.INFO
+        
     root_logger.setLevel(log_level)
 
     # コンソールハンドラを作成・設定
@@ -98,7 +105,7 @@ def add_debug_log(
     引数:
         msg: ログメッセージ (文字列、辞書、リスト、例外)
         group: ログのグループ名 (指定しない場合は呼び出し元の関数名を使用)
-        level: ログレベル ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+        level: ログレベル ("DEBUG", "INFO", "WARNING", "ERROR")
     """
 
     # 呼び出し元の関数名を取得
@@ -141,10 +148,34 @@ def add_debug_log(
         logger.warning(log_output)
     elif log_level_int == logging.ERROR:
         logger.error(log_output)
-    elif log_level_int == logging.CRITICAL:
-        logger.critical(log_output)
     else:
         logger.log(log_level_int, log_output)
+
+
+def log_operation_error(
+    operation_type: str,
+    error_msg: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """
+    ブラウザ操作のエラーをログ出力します。ログレベルに関わらず常にINFOレベル以上で出力します。
+
+    Args:
+        operation_type: 操作の種類 ("click_element", "input_text" など)
+        error_msg: エラーメッセージ
+        details: エラーの詳細情報（ref_id、URLなど）
+    """
+    # 詳細情報のフォーマット
+    details_str = ""
+    if details:
+        try:
+            details_list = [f"{k}={v}" for k, v in details.items()]
+            details_str = f" ({', '.join(details_list)})"
+        except (TypeError, ValueError):
+            details_str = f" ({details})"
+
+    # エラーメッセージを常にINFOレベルで出力
+    logger.info(f"操作エラー - {operation_type}: {error_msg}{details_str}")
 
 
 def log_json_debug(

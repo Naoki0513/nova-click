@@ -10,6 +10,7 @@
 
 ## 変更履歴
 
+- `main.py` に `LOG_LEVEL` 設定を追加しました。ログ出力のレベルを "DEBUG", "INFO", "WARNING", "ERROR" から選択できます。
 - `src/constants.py` を廃止し、定数定義を `main.py` に統合しました。これにより、ユーザーは `main.py` だけを編集すればモデルやプロンプトなどの設定を変更できます。
 - 会話ループ処理（`run_cli_mode`）を `src/message.py` に移設しました。`main.py` は設定値とラッパー関数のみのシンプルな構成となっています。
 - 未使用の機能（URLへの移動、現在のURL取得、Cookieの保存機能）を削除し、コードを整理しました。
@@ -55,14 +56,25 @@ src/
 ように `src/browser/__init__.py` で公開関数を再エクスポートしているため、
 既存スクリプト側の修正は基本的に不要です。
 
+## エラーログの改善
+
+ブラウザ操作（click_elementやinput_text）の実行中にタイムアウトなどのエラーが発生した場合、
+ログレベルがINFOに設定されていても、エラー内容を確実にログに出力するよう改善しました。
+
+- `src/utils.py` に `log_operation_error` 関数を追加
+- 操作エラー発生時に常にINFOレベル以上でログ出力
+- ツール実行時のパラメータエラーも同様にログ出力
+
+これにより、デバッグレベルをINFOに設定している場合でも、重要なエラー情報が確実にログに記録されるようになりました。
+エラーが発生した場合、以下のような形式でログに出力されます：
+
+```
+操作エラー - click_element: クリックタイムアウト (ref_id=123)
+操作エラー - input_text: 要素が見つかりません (ref_id=456, text='検索ワード')
+```
+
 ## テストの実行
 
 ローカルで全テストを実行するには次のコマンドを利用します。
 
-```bash
-pip install -r requirements.txt
-pip install pytest
-pytest -q
 ```
-
-CI では GitHub Actions のワークフローファイル (.github/workflows/ci.yml) で同様に pytest を実行しています。

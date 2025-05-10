@@ -9,7 +9,7 @@ from typing import Any
 
 from .browser import click_element as browser_click_element
 from .browser import input_text as browser_input_text
-from .utils import add_debug_log
+from .utils import add_debug_log, log_operation_error
 
 logger = logging.getLogger(__name__)
 
@@ -79,23 +79,29 @@ def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[st
 
     if tool_name == "click_element":
         if params is None or "ref_id" not in params:
+            error_msg = "パラメータ ref_id が指定されていません"
+            log_operation_error(tool_name, error_msg, params)
             result = {
                 "status": "error",
-                "message": "パラメータ ref_id が指定されていません",
+                "message": error_msg,
             }
         else:
             result = browser_click_element(params.get("ref_id"))
     elif tool_name == "input_text":
         if params is None or "ref_id" not in params or "text" not in params:
+            error_msg = "パラメータ text または ref_id が指定されていません"
+            log_operation_error(tool_name, error_msg, params)
             result = {
                 "status": "error",
-                "message": "パラメータ text または ref_id が指定されていません",
+                "message": error_msg,
             }
         else:
             result = browser_input_text(params.get("text"), params.get("ref_id"))
     else:
-        add_debug_log(f"tools.dispatch_browser_tool: 不明なツール {tool_name}")
-        result = {"status": "error", "message": f"不明なツール: {tool_name}"}
+        error_msg = f"不明なツール: {tool_name}"
+        add_debug_log(f"tools.dispatch_browser_tool: {error_msg}")
+        log_operation_error("unknown_tool", error_msg, params)
+        result = {"status": "error", "message": error_msg}
 
     return result
 
