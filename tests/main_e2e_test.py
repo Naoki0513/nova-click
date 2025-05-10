@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import traceback
-from typing import Any
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -57,6 +57,61 @@ def mock_bedrock_client(*args, **kwargs):  # pylint: disable=unused-argument
     return mock_client
 
 
+def verify_api_response(response: Dict[str, Any]) -> bool:
+    """API応答の検証を行う汎用関数
+
+    Args:
+        response: Bedrock APIからのレスポンス
+
+    Returns:
+        bool: 検証が成功したかどうか
+    """
+    success = True
+    
+    # 1. 基本的な構造チェック
+    if not isinstance(response, dict):
+        logging.error("APIレスポンスはdict型である必要があります")
+        return False
+    
+    # 2. 必須フィールドの存在チェック
+    required_fields = ["output", "stopReason", "usage"]
+    for field in required_fields:
+        if field not in response:
+            logging.error("必須フィールド '%s' がレスポンスにありません", field)
+            success = False
+    
+    if not success:
+        return False
+    
+    # 3. 出力メッセージの構造チェック
+    output = response.get("output", {})
+    message = output.get("message", {})
+    
+    if not message.get("role"):
+        logging.error("メッセージにroleフィールドがありません")
+        success = False
+    
+    content = message.get("content", [])
+    if not content or not isinstance(content, list):
+        logging.error("メッセージのcontentフィールドが不正です")
+        success = False
+    
+    # 4. 使用量情報のチェック
+    usage = response.get("usage", {})
+    usage_fields = ["inputTokens", "outputTokens", "totalTokens"]
+    for field in usage_fields:
+        if field not in usage:
+            logging.warning("使用量情報に '%s' フィールドがありません", field)
+    
+    # 5. stopReasonの解析
+    stop_reason = response.get("stopReason")
+    if stop_reason != "end_turn":
+        logging.error("stopReasonが期待値 'end_turn' ではなく '%s' です", stop_reason)
+        success = False
+    
+    return success
+
+
 def test_normal_case():
     """正常系テスト - 通常の会話APIフロー"""
     logging.info("=== 正常系テスト開始 ===")
@@ -65,17 +120,21 @@ def test_normal_case():
     init_res = initialize_browser()
     if init_res.get("status") != "success":
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
-        return False
+        assert False, "ブラウザ初期化に失敗"
 
     goto_res = goto_url("https://www.google.co.jp/")
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
-        return False
+        assert False, "URL移動に失敗"
 
+    # 初期ARIAスナップショット取得
     aria_res = get_aria_snapshot()
     if aria_res.get("status") != "success":
         logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
-        return False
+        assert False, "ARIA Snapshot取得に失敗"
+    
+    initial_elements = aria_res.get("aria_snapshot", [])
+    logging.info("初期要素数: %d", len(initial_elements))
 
     # Bedrock API呼び出しテスト
     success = True
@@ -86,10 +145,35 @@ def test_normal_case():
         tool_config = {"tools": [], "toolChoice": {"auto": {}}}
 
         mock_client = mock_bedrock_client()
+        
+        # API呼び出し前の状態を記録
+        pre_call_time = time.time()
+        
         response = call_bedrock_api(
             mock_client, messages, system_prompt, model_id, tool_config
         )
-
+        
+        # API呼び出し後の経過時間を記録
+        call_duration = time.time() - pre_call_time
+        logging.info("API呼び出し所要時間: %.2f秒", call_duration)
+        
+        # API呼び出し後の状態を検証
+        post_api_aria_res = get_aria_snapshot()
+        if post_api_aria_res.get("status") == "success":
+            post_elements = post_api_aria_res.get("aria_snapshot", [])
+            logging.info("API呼び出し後の要素数: %d", len(post_elements))
+            
+            # DOM状態が変わっていないことを確認（API呼び出しはDOM操作を行わない）
+            if len(initial_elements) != len(post_elements):
+                logging.warning("API呼び出し前後でDOM要素数が変化しています: %d → %d", 
+                             len(initial_elements), len(post_elements))
+        
+        # レスポンスの詳細検証
+        if not verify_api_response(response):
+            logging.error("APIレスポンス検証に失敗しました")
+            success = False
+            
+        # stopReasonの検証（基本チェック）
         if response.get("stopReason") != "end_turn":
             logging.error(
                 "stopReasonが 'end_turn' ではありません: %s", response.get("stopReason")
@@ -104,10 +188,21 @@ def test_normal_case():
                 logging.error("正常系なのにエラーが検出されました")
                 success = False
 
+    # ログに応答内容の詳細を出力
+    if 'response' in locals():
+        try:
+            output = response.get("output", {})
+            message = output.get("message", {})
+            content = message.get("content", [])
+            response_text = content[0].get("text") if content else "(テキストなし)"
+            logging.info("APIレスポンステキスト: %s", response_text[:100] + '...' if len(response_text) > 100 else response_text)
+        except (KeyError, IndexError) as e:
+            logging.warning("レスポンステキスト抽出中にエラー: %s", e)
+
     if success:
         logging.info("正常系テスト成功")
 
-    return success
+    assert success, "正常系テストが失敗しました"
 
 
 def test_error_case():  # pylint: disable=too-many-return-statements
@@ -119,12 +214,21 @@ def test_error_case():  # pylint: disable=too-many-return-statements
     init_res = initialize_browser()
     if init_res.get("status") != "success":
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
-        return False
+        assert False, "ブラウザ初期化に失敗"
 
     goto_res = goto_url("https://www.google.co.jp/")
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
-        return False
+        assert False, "URL移動に失敗"
+
+    # 初期状態のARIAスナップショット取得
+    initial_aria_res = get_aria_snapshot()
+    if initial_aria_res.get("status") != "success":
+        logging.error("初期ARIA Snapshot取得に失敗: %s", initial_aria_res.get("message"))
+        assert False, "初期ARIA Snapshot取得に失敗"
+    
+    initial_elements = initial_aria_res.get("aria_snapshot", [])
+    logging.info("初期要素数: %d", len(initial_elements))
 
     def mock_error_client(*args, **kwargs):  # pylint: disable=unused-argument
         mock_client = MagicMock()
@@ -146,6 +250,7 @@ def test_error_case():  # pylint: disable=too-many-return-statements
         mock_client = mock_error_client()
 
         # 最初のAPI呼び出しでエラーが発生することを確認
+        first_error_occurred = False
         try:
             call_bedrock_api(
                 mock_client, messages, system_prompt, model_id, tool_config
@@ -153,7 +258,19 @@ def test_error_case():  # pylint: disable=too-many-return-statements
             logging.error("エラーが発生しませんでした")
             success = False
         except Exception as e:  # pylint: disable=broad-exception-caught
+            first_error_occurred = True
             logging.info("想定通りエラーが発生しました: %s", e)
+            
+            # エラー発生後のDOM状態を検証
+            error_aria_res = get_aria_snapshot()
+            if error_aria_res.get("status") == "success":
+                error_elements = error_aria_res.get("aria_snapshot", [])
+                logging.info("エラー発生後の要素数: %d", len(error_elements))
+                
+                # エラーによってDOM状態が変わっていないことを確認
+                if len(initial_elements) != len(error_elements):
+                    logging.warning("エラー発生前後でDOM要素数が変化しています: %d → %d", 
+                                 len(initial_elements), len(error_elements))
 
             # 2回目のAPI呼び出しで正常に終了することを確認
             try:
@@ -161,6 +278,11 @@ def test_error_case():  # pylint: disable=too-many-return-statements
                     mock_client, messages, system_prompt, model_id, tool_config
                 )
 
+                # 詳細な応答検証
+                if not verify_api_response(response):
+                    logging.error("2回目のAPIレスポンス検証に失敗しました")
+                    success = False
+                
                 # レスポンスの検証
                 if response.get("stopReason") != "end_turn":
                     logging.error(
@@ -174,15 +296,36 @@ def test_error_case():  # pylint: disable=too-many-return-statements
                         logging.error("stopReasonの分析が正しくありません")
                         success = False
                     else:
+                        # エラー後の回復であることを確認
+                        if 'response' in locals():
+                            try:
+                                output = response.get("output", {})
+                                message = output.get("message", {})
+                                content = message.get("content", [])
+                                response_text = content[0].get("text") if content else "(テキストなし)"
+                                logging.info("回復後のAPIレスポンステキスト: %s", 
+                                           response_text[:100] + '...' if len(response_text) > 100 else response_text)
+                                
+                                # 回復したレスポンスが期待するものか検証
+                                if "エラー" in response_text:
+                                    logging.info("回復レスポンスにエラーへの言及があります")
+                            except (KeyError, IndexError) as e:
+                                logging.warning("回復レスポンステキスト抽出中にエラー: %s", e)
+                        
                         logging.info("エラー後のリカバリーが成功しました")
             except Exception as e2:  # pylint: disable=broad-exception-caught
                 logging.error("エラー後のリカバリーに失敗しました: %s", e2)
                 success = False
 
+    # エラーが実際に発生したことを確認
+    if not first_error_occurred:
+        logging.error("最初のAPI呼び出しでエラーが発生しませんでした")
+        success = False
+
     if success:
         logging.info("異常系テスト成功")
 
-    return success
+    assert success, "異常系テストが失敗しました"
 
 
 # pylint: disable=too-many-locals,too-many-statements
@@ -193,18 +336,23 @@ def test_main_e2e():
     init_res = initialize_browser()
     if init_res.get("status") != "success":
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
-        return False
+        assert False, "ブラウザ初期化に失敗"
 
     goto_res = goto_url("https://www.google.co.jp/")
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
-        return False
+        assert False, "URL移動に失敗"
 
+    # 初期のARIAスナップショット取得
     aria_res = get_aria_snapshot()
     if aria_res.get("status") != "success":
         logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
-        return False
+        assert False, "ARIA Snapshot取得に失敗"
+    
+    initial_elements = aria_res.get("aria_snapshot", [])
+    logging.info("初期要素数: %d", len(initial_elements))
 
+    success = True
     with patch("src.bedrock.create_bedrock_client", side_effect=mock_bedrock_client):
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": [{"text": "テストクエリ"}]}
@@ -230,11 +378,25 @@ def test_main_e2e():
             turn_count += 1
             logging.info("--- ターン %d 開始 ---", turn_count)
 
+            # ターン開始時のDOM状態を記録
+            turn_start_aria_res = get_aria_snapshot()
+            if turn_start_aria_res.get("status") == "success":
+                turn_start_elements = turn_start_aria_res.get("aria_snapshot", [])
+                logging.info("ターン %d 開始時の要素数: %d", turn_count, len(turn_start_elements))
+
             try:
                 mock_client = mock_bedrock_client()
+                
+                # API呼び出し前の時刻を記録
+                api_start_time = time.time()
+                
                 response = call_bedrock_api(
                     mock_client, messages, system_prompt, model_id, tool_config
                 )
+                
+                # API呼び出し所要時間を記録
+                api_duration = time.time() - api_start_time
+                logging.info("ターン %d のAPI呼び出し所要時間: %.2f秒", turn_count, api_duration)
 
                 usage = response.get("usage", {})
                 result["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
@@ -242,12 +404,18 @@ def test_main_e2e():
                 result["token_usage"]["totalTokens"] += usage.get(
                     "inputTokens", 0
                 ) + usage.get("outputTokens", 0)
+                
+                # レスポンスの詳細検証
+                if not verify_api_response(response):
+                    logging.error("ターン %d のAPIレスポンス検証に失敗しました", turn_count)
+                    success = False
 
             except Exception as e:  # pylint: disable=broad-exception-caught
                 err_msg = str(e)
                 logging.error("Bedrock API呼び出しエラー: %s", err_msg)
                 result["status"] = "error"
                 result["message"] = f"Bedrock APIエラー: {err_msg}"
+                success = False
                 break
 
             output = response.get("output", {})
@@ -257,33 +425,76 @@ def test_main_e2e():
             message_content = message.get("content", [])
             messages.append({"role": "assistant", "content": message_content})
             result["messages"].append({"role": "assistant", "content": message_content})
+            
+            # レスポンスメッセージの内容を検証
+            response_text = message_content[0].get("text") if message_content else ""
+            logging.info("ターン %d のレスポンステキスト: %s", 
+                       turn_count, response_text[:100] + '...' if len(response_text) > 100 else response_text)
 
             stop_analysis = analyze_stop_reason(stop_reason)
+            
+            # ターン終了時のDOM状態を記録して変化を検証
+            turn_end_aria_res = get_aria_snapshot()
+            if turn_end_aria_res.get("status") == "success":
+                turn_end_elements = turn_end_aria_res.get("aria_snapshot", [])
+                logging.info("ターン %d 終了時の要素数: %d", turn_count, len(turn_end_elements))
+                
+                if len(turn_start_elements) != len(turn_end_elements):
+                    logging.info("ターン %d 内でDOM要素数が変化しました: %d → %d", 
+                              turn_count, len(turn_start_elements), len(turn_end_elements))
+            
             if not stop_analysis["should_continue"]:
                 if stop_analysis["error"]:
                     result["status"] = "error"
                     result["message"] = stop_analysis["message"]
+                    success = False
                 break
 
         if result["status"] != "success":
             logging.error(
                 "E2Eテストが失敗しました: %s", result.get("message", "不明なエラー")
             )
-            return False
+            success = False
 
         if turn_count >= max_turns:
             logging.error("最大ターン数 (%d) に達しました", max_turns)
-            return False
+            success = False
 
-        logging.info("E2Eテスト成功: %dターンで正常に終了", turn_count)
+        # 最終的な状態を検証
+        final_aria_res = get_aria_snapshot()
+        if final_aria_res.get("status") == "success":
+            final_elements = final_aria_res.get("aria_snapshot", [])
+            logging.info("最終的な要素数: %d", len(final_elements))
+            
+            if len(initial_elements) != len(final_elements):
+                logging.info("テスト全体でDOM要素数が変化しました: %d → %d", 
+                          len(initial_elements), len(final_elements))
+        
+        # トークン使用量を確認
+        logging.info("トークン使用量: 入力=%d, 出力=%d, 合計=%d",
+                   result["token_usage"]["inputTokens"],
+                   result["token_usage"]["outputTokens"],
+                   result["token_usage"]["totalTokens"])
+
+        if success:
+            logging.info("E2Eテスト成功: %dターンで正常に終了", turn_count)
 
     cleanup_browser()
 
-    return True
+    assert success, "E2Eテストが失敗しました"
 
 
 def main():
     """メイン関数 - テストの実行を制御"""
+    # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
+    if len(sys.argv) > 1 and sys.argv[0].endswith('__main__.py'):
+        # pytestから実行される場合、余計な引数をフィルタリング
+        filtered_args = [sys.argv[0]]
+        for arg in sys.argv[1:]:
+            if arg in ['--debug', '--timeout'] or not arg.startswith('-'):
+                filtered_args.append(arg)
+        sys.argv = filtered_args
+
     parser = argparse.ArgumentParser(description="main.pyのE2Eテスト")
     parser.add_argument(
         "--debug", action="store_true", help="デバッグモードを有効にする"
@@ -304,9 +515,29 @@ def main():
     start_time = time.time()
 
     try:
-        normal_success = test_normal_case()
-        error_success = test_error_case()
-        e2e_success = test_main_e2e()
+        # テスト関数を実行し、必要に応じてassert文を評価
+        success = True
+        
+        try:
+            test_normal_case()  # 戻り値を使用しない
+            normal_success = True
+        except AssertionError:
+            normal_success = False
+            success = False
+            
+        try:
+            test_error_case()  # 戻り値を使用しない
+            error_success = True
+        except AssertionError:
+            error_success = False
+            success = False
+            
+        try:
+            test_main_e2e()  # 戻り値を使用しない
+            e2e_success = True
+        except AssertionError:
+            e2e_success = False
+            success = False
 
         elapsed_time = time.time() - start_time
         logging.info("テスト実行時間: %.2f秒", elapsed_time)
