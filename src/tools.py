@@ -98,3 +98,9 @@ def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[st
         result = {"status": "error", "message": f"不明なツール: {tool_name}"}
 
     return result
+
+
+__all__: list[str] = [
+    "get_browser_tools_config",
+    "dispatch_browser_tool",
+]

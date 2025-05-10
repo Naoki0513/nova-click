@@ -10,8 +10,10 @@
 
 ## 変更履歴
 
+- `src/constants.py` を廃止し、定数定義を `main.py` に統合しました。これにより、ユーザーは `main.py` だけを編集すればモデルやプロンプトなどの設定を変更できます。
+- 会話ループ処理（`run_cli_mode`）を `src/message.py` に移設しました。`main.py` は設定値とラッパー関数のみのシンプルな構成となっています。
 - 未使用の機能（URLへの移動、現在のURL取得、Cookieの保存機能）を削除し、コードを整理しました。
-- テスト用の定数を削除しました。
+- テスト用の定数を統合し、各テストスクリプトは `main.py` から定数を参照するように変更しました。
 
 ## インストール
 
@@ -28,3 +30,32 @@ python main.py
 ## ライセンス
 
 MIT
+
+## モジュール構成 (v2)
+
+```
+src/
+  browser/           # ブラウザ操作ロジックを管理するサブパッケージ
+    __init__.py      # 旧 browser.py と互換性を保つエクスポート
+    actions.py       # Playwright を用いた実際の操作（クリック・入力・URL 遷移など）
+    worker.py        # (今後) ブラウザワーカースレッド管理用プレースホルダー
+    snapshot.py      # ARIA Snapshot 取得ロジック（JS コードを含む）
+    utils.py         # 画面解像度取得・デバッグユーティリティなど
+```
+
+以前は `src/browser.py` 1 ファイルに集約されていた実装を、上記 4 つの
+モジュールへ分割しました。`import browser` で従来どおり API を呼び出せる
+ように `src/browser/__init__.py` で公開関数を再エクスポートしているため、
+既存スクリプト側の修正は基本的に不要です。
+
+## テストの実行
+
+ローカルで全テストを実行するには次のコマンドを利用します。
+
+```bash
+pip install -r requirements.txt
+pip install pytest
+pytest -q
+```
+
+CI では GitHub Actions のワークフローファイル (.github/workflows/ci.yml) で同様に pytest を実行しています。

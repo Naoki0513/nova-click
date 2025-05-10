@@ -14,6 +14,7 @@ from typing import Any
 import boto3
 
 from .utils import add_debug_log, log_json_debug
+from .exceptions import BedrockAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +76,11 @@ def call_bedrock_api(
         log_json_debug("Bedrock Response", response, level="DEBUG")
 
         return response
-    except Exception as e:
-        err_msg = str(e)
-        add_debug_log(f"Bedrock API呼び出しエラー: {err_msg}")
-        raise
+    except Exception as exc:  # noqa: BLE001
+        # boto3 由来の例外をキャッチしてラップする
+        err_msg = str(exc)
+        add_debug_log(f"Bedrock API呼び出しエラー: {err_msg}", level="ERROR")
+        raise BedrockAPIError(err_msg) from exc
 
 
 def analyze_stop_reason(stop_reason: str) -> dict[str, Any]:
@@ -158,3 +160,13 @@ def create_bedrock_client(credentials: dict[str, str]) -> Any:
     )
 
     return bedrock_runtime
+
+__all__: list[str] = [
+    "get_inference_config",
+    "update_token_usage",
+    "call_bedrock_api",
+    "analyze_stop_reason",
+    "extract_tool_calls",
+    "create_bedrock_client",
+    "BedrockAPIError",
+]

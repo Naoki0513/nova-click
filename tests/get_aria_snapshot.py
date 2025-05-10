@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # pylint: disable=wrong-import-position
 from src.utils import setup_logging
 from src.browser import initialize_browser, goto_url, get_aria_snapshot
-from src import constants
+import main as constants
 # pylint: enable=wrong-import-position
 
 # テスト用パラメータ
