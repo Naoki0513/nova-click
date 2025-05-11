@@ -9,7 +9,6 @@ ref_id で指定した要素をクリックするテストを行います。
 環境変数:
     HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
 """
-import argparse
 import logging
 import os
 import sys
@@ -19,14 +18,12 @@ import traceback
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# pylint: disable=wrong-import-position
 from src.browser import (cleanup_browser, click_element, get_aria_snapshot,
                          goto_url, initialize_browser)
 from src.utils import setup_logging
 
-# pylint: enable=wrong-import-position
 
-# テスト用パラメータ（自由に変更可能）
+# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
 TEST_URL = "https://www.google.co.jp/"
 TEST_REF_ID = 26
 # 異常系テスト用
@@ -223,34 +220,19 @@ def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID):
 
 def main():
     """メイン関数 - テストの実行と結果の処理を行う"""
-    # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
-        # pytestから実行される場合、余計な引数をフィルタリング
-        filtered_args = [sys.argv[0]]
-        for arg in sys.argv[1:]:
-            if arg in ["--debug", "--url", "--ref-id"] or not arg.startswith("-"):
-                filtered_args.append(arg)
-        sys.argv = filtered_args
-
-    parser = argparse.ArgumentParser(description="click_elementのテスト")
-    parser.add_argument(
-        "--debug", action="store_true", help="デバッグモードを有効にする"
-    )
-    parser.add_argument("--url", type=str, default=TEST_URL, help="テスト対象のURL")
-    parser.add_argument(
-        "--ref-id", type=int, default=TEST_REF_ID, help="クリックする要素のref_id"
-    )
-    args = parser.parse_args()
+    # テスト設定を適用
+    url = TEST_URL
+    ref_id = TEST_REF_ID
 
     setup_logging()
-    if args.debug or True:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # ログレベルを常にDEBUGに設定
+    logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info(
         "Test parameters: url=%s, ref_id=%s, headless=%s",
-        args.url,
-        args.ref_id,
+        url,
+        ref_id,
         os.environ.get("HEADLESS", "false"),
     )
 
@@ -260,13 +242,13 @@ def main():
         error_success = False
 
         try:
-            test_normal_case(args.url, args.ref_id)
+            test_normal_case(url, ref_id)
             normal_success = True
         except AssertionError as e:
             logging.error("正常系テスト失敗: %s", e)
 
         try:
-            test_error_case(args.url, TEST_ERROR_REF_ID)
+            test_error_case(url, TEST_ERROR_REF_ID)
             error_success = True
         except AssertionError as e:
             logging.error("異常系テスト失敗: %s", e)
@@ -277,7 +259,7 @@ def main():
         else:
             logging.error("一部のテストが失敗しました")
             return 1
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logging.error("テスト実行中にエラーが発生しました: %s", e)
         traceback.print_exc()
         return 1
@@ -286,7 +268,7 @@ def main():
         try:
             cleanup_browser()
             logging.info("ブラウザのクリーンアップが完了しました")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
 
 

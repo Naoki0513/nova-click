@@ -4,13 +4,9 @@
 ブラウザワーカーを起動し、指定(またはデフォルト)のURLに移動してから
 最新のARIA Snapshotを取得してコンソールに出力します。
 
-Usage:
-    python tests/get_aria_snapshot.py [--debug] [--url URL]
-    
 環境変数:
     HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
 """
-import argparse
 import json
 import logging
 import os
@@ -22,45 +18,28 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from src.browser import (cleanup_browser, get_aria_snapshot, goto_url,
                          initialize_browser)
-# pylint: disable=wrong-import-position
 from src.utils import setup_logging
 
-# pylint: enable=wrong-import-position
 
-# テスト用パラメータ（自由に変更可能）
+# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
 TEST_URL = "https://www.google.co.jp/maps/"
-DEBUG_MODE = True
 
 
 def main():
     """
     メイン実行関数 - ARIAスナップショットの取得テストを実行します。
-    コマンドライン引数でURLやデバッグモードを制御できます。
     """
-    # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
-        # pytestから実行される場合、余計な引数をフィルタリング
-        filtered_args = [sys.argv[0]]
-        for arg in sys.argv[1:]:
-            if arg in ["--debug", "--url"] or not arg.startswith("-"):
-                filtered_args.append(arg)
-        sys.argv = filtered_args
-
-    parser = argparse.ArgumentParser(description="ARIAスナップショットのテスト")
-    parser.add_argument(
-        "--debug", action="store_true", help="デバッグモードを有効にする"
-    )
-    parser.add_argument("--url", type=str, default=TEST_URL, help="テスト対象のURL")
-    args = parser.parse_args()
+    # 設定を適用
+    url = TEST_URL
 
     setup_logging()
-    if args.debug or DEBUG_MODE:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # ログレベルを常にDEBUGに設定
+    logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info(
         "Test parameters: url=%s, headless=%s",
-        args.url,
+        url,
         os.environ.get("HEADLESS", "false"),
     )
 
@@ -72,29 +51,29 @@ def main():
             return 1
 
         # URLに移動
-        goto_res = goto_url(args.url)
+        goto_res = goto_url(url)
         if goto_res.get("status") != "success":
             logging.error("URL移動に失敗: %s", goto_res.get("message"))
             return 1
 
-        current_url = goto_res.get("current_url", args.url)
+        current_url = goto_res.get("current_url", url)
         logging.info("ページに移動しました: %s", current_url)
 
         # 検証: 正しいURLに移動できたか
-        if current_url != args.url and not current_url.startswith(args.url):
+        if current_url != url and not current_url.startswith(url):
             logging.warning(
                 "移動先URLが指定URLと異なります: 指定=%s, 実際=%s",
-                args.url,
+                url,
                 current_url,
             )
 
         # ARIA Snapshot取得
-        snap_res = get_aria_snapshot()
-        if snap_res.get("status") != "success":
-            logging.error("ARIA Snapshot取得に失敗: %s", snap_res.get("message"))
+        aria_res = get_aria_snapshot()
+        if aria_res.get("status") != "success":
+            logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
             return 1
 
-        snapshot = snap_res.get("aria_snapshot", [])
+        snapshot = aria_res.get("aria_snapshot", [])
         logging.info("取得した要素数: %d", len(snapshot))
 
         # 検証: スナップショットの基本的な有効性チェック
@@ -151,7 +130,7 @@ def main():
         try:
             cleanup_browser()
             logging.info("ブラウザのクリーンアップが完了しました")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
 
 

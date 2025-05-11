@@ -8,7 +8,6 @@
     HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
 """
 
-import argparse
 import logging
 import os
 import signal
@@ -19,20 +18,18 @@ import traceback
 # プロジェクトルートをPythonパスに追加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# pylint: disable=wrong-import-position
 from src.browser import (cleanup_browser, get_aria_snapshot, goto_url,
                          initialize_browser, input_text)
 from src.utils import setup_logging
 
-# pylint: enable=wrong-import-position
 
-# テスト用パラメータ（自由に変更可能）
+# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
 TEST_URL = "https://www.google.co.jp/"
 TEST_REF_ID = 13
 TEST_TEXT = "Amazon"
-TEST_TIMEOUT = 3
-# 異常系テスト用
 TEST_ERROR_REF_ID = 9999
+# 操作のタイムアウト（秒）
+TEST_TIMEOUT = 30
 
 
 def timeout_handler(_signum, _frame):
@@ -80,9 +77,9 @@ def test_normal_case(
         assert False, "URL移動がタイムアウト"
 
     # 初回ARIA Snapshot取得でDOMにref-id属性を注入
-    snap_res = get_aria_snapshot()
-    if snap_res.get("status") != "success":
-        logging.error("ARIA Snapshot取得に失敗: %s", snap_res.get("message"))
+    aria_res = get_aria_snapshot()
+    if aria_res.get("status") != "success":
+        logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
         assert False, "ARIA Snapshot取得に失敗"
 
     if time.time() - start_time > operation_timeout:
@@ -91,7 +88,7 @@ def test_normal_case(
         )
         assert False, "ARIA Snapshot取得がタイムアウト"
 
-    elements_before = snap_res.get("aria_snapshot", [])
+    elements_before = aria_res.get("aria_snapshot", [])
     logging.info("取得した要素数: %d", len(elements_before))
 
     logging.info("利用可能な要素一覧:")
@@ -323,14 +320,14 @@ def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID, text=TEST_TEXT):
     logging.info("ページ読み込み完了: %s", initial_url)
 
     # 操作前のDOM状態を記録
-    snap_before_res = get_aria_snapshot()
-    if snap_before_res.get("status") != "success":
+    aria_before_res = get_aria_snapshot()
+    if aria_before_res.get("status") != "success":
         logging.error(
-            "操作前のARIA Snapshot取得に失敗: %s", snap_before_res.get("message")
+            "操作前のARIA Snapshot取得に失敗: %s", aria_before_res.get("message")
         )
         assert False, "ARIA Snapshot取得に失敗"
 
-    elements_before = snap_before_res.get("aria_snapshot", [])
+    elements_before = aria_before_res.get("aria_snapshot", [])
     logging.info("操作前の要素数: %d", len(elements_before))
 
     # テキスト入力実行（存在しない要素）
@@ -358,9 +355,9 @@ def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID, text=TEST_TEXT):
                 )
 
         # 2. DOM状態の変化がないか確認
-        snap_after_res = get_aria_snapshot()
-        if snap_after_res.get("status") == "success":
-            elements_after = snap_after_res.get("aria_snapshot", [])
+        aria_after_res = get_aria_snapshot()
+        if aria_after_res.get("status") == "success":
+            elements_after = aria_after_res.get("aria_snapshot", [])
             if len(elements_after) == len(elements_before):
                 logging.info("要素数に変化がないことを確認: %d", len(elements_after))
             else:
@@ -378,52 +375,29 @@ def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID, text=TEST_TEXT):
 
 def main():
     """メイン関数 - テストの実行を制御する"""
-    # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
-        # pytestから実行される場合、余計な引数をフィルタリング
-        filtered_args = [sys.argv[0]]
-        for arg in sys.argv[1:]:
-            if arg in [
-                "--debug",
-                "--url",
-                "--ref-id",
-                "--text",
-                "--timeout",
-            ] or not arg.startswith("-"):
-                filtered_args.append(arg)
-        sys.argv = filtered_args
-
-    parser = argparse.ArgumentParser(description="input_textのテスト")
-    parser.add_argument(
-        "--debug", action="store_true", help="デバッグモードを有効にする"
-    )
-    parser.add_argument("--url", type=str, default=TEST_URL, help="テスト対象のURL")
-    parser.add_argument(
-        "--ref-id", type=int, default=TEST_REF_ID, help="テキストを入力する要素のref_id"
-    )
-    parser.add_argument("--text", type=str, default=TEST_TEXT, help="入力するテキスト")
-    parser.add_argument(
-        "--timeout", type=int, default=60, help="テスト全体のタイムアウト（秒）"
-    )
-    args = parser.parse_args()
+    # テスト設定を適用
+    url = TEST_URL
+    ref_id = TEST_REF_ID
+    text = TEST_TEXT
+    timeout = 60  # テスト全体のタイムアウト（秒）
 
     setup_logging()
-    if args.debug or True:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # ログレベルを常にDEBUGに設定
+    logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info(
         "Test parameters: url=%s, ref_id=%s, text='%s', headless=%s, timeout=%s秒",
-        args.url,
-        args.ref_id,
-        args.text,
+        url,
+        ref_id,
+        text,
         os.environ.get("HEADLESS", "false"),
-        args.timeout,
+        timeout,
     )
 
     if sys.platform != "win32":
         signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(args.timeout)
+        signal.alarm(timeout)
 
     start_time = time.time()
 
@@ -435,13 +409,13 @@ def main():
         error_success = False
 
         try:
-            test_normal_case(args.url, args.ref_id, args.text)
+            test_normal_case(url, ref_id, text)
             normal_success = True
         except AssertionError as e:
             logging.error("正常系テスト失敗: %s", e)
 
         try:
-            test_error_case(args.url, TEST_ERROR_REF_ID, args.text)
+            test_error_case(url, TEST_ERROR_REF_ID, text)
             error_success = True
         except AssertionError as e:
             logging.error("異常系テスト失敗: %s", e)
@@ -469,7 +443,7 @@ def main():
         try:
             cleanup_browser()
             logging.info("ブラウザのクリーンアップが完了しました")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
 
 

@@ -1,3 +1,2 @@
 boto3==1.38.13
 playwright==1.40.0
-argparse

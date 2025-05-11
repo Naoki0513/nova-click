@@ -244,7 +244,7 @@ def run_cli_mode() -> int:  # noqa: D401
             # トークン使用量更新
             result["token_usage"] = update_token_usage(response, result["token_usage"])
 
-        except BedrockAPIError as e:  # pylint: disable=broad-exception-caught
+        except BedrockAPIError as e:
             err_msg = str(e)
             logger.error("Bedrock API呼び出しエラー: %s", err_msg)
             result["status"] = "error"

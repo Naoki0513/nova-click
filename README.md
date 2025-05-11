@@ -61,6 +61,13 @@
     - `tests/input_text_test.py`: タイムアウト値 60 を直接指定
     - `tests/click_element_test.py`: setup_logging 関数の呼び出し方法を修正
 
+## 最近の変更
+
+### テストファイルの修正
+- `input_text_test.py`および`main_e2e_test.py`に未定義だった`TEST_TIMEOUT`定数を追加しました
+  - `input_text_test.py`: タイムアウト値を30秒に設定
+  - `main_e2e_test.py`: タイムアウト値を60秒に設定
+
 ## インストール
 
 ```bash

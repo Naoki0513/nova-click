@@ -9,7 +9,6 @@ stopReasonが「endTurn」で終わることを検証します。
     CI - 'true'の場合、CI環境向けのログ設定を使用します
 """
 
-import argparse
 import logging
 import os
 import sys
@@ -20,19 +19,21 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.bedrock import (  # pylint: disable=wrong-import-position,import-error
+from src.bedrock import (
     analyze_stop_reason, call_bedrock_api)
-from src.browser import (  # pylint: disable=wrong-import-position,import-error
+from src.browser import (
     cleanup_browser, get_aria_snapshot, goto_url, initialize_browser)
 from src.utils import \
-    setup_logging  # pylint: disable=wrong-import-position,import-error
+    setup_logging
 
-# テスト用パラメータ（自由に変更可能）
+# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
 TEST_URL = "https://www.google.co.jp/"
 TEST_MODEL_ID = "test-model"
 TEST_SYSTEM_PROMPT = "テスト用システムプロンプト"
 TEST_USER_QUERY = "テストクエリ"
 TEST_MAX_TURNS = 3
+# 操作のタイムアウト（秒）
+TEST_TIMEOUT = 60
 
 MOCK_BEDROCK_RESPONSE = {
     "output": {
@@ -57,7 +58,7 @@ MOCK_ERROR_RESPONSE = {
 }
 
 
-def mock_bedrock_client(*args, **kwargs):  # pylint: disable=unused-argument
+def mock_bedrock_client(*args, **kwargs):  
     """モックのBedrockクライアントを作成"""
     mock_client = MagicMock()
     mock_client.converse.return_value = MOCK_BEDROCK_RESPONSE
@@ -222,7 +223,7 @@ def test_normal_case(url=TEST_URL):
     assert success, "正常系テストが失敗しました"
 
 
-def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
+def test_error_case(url=TEST_URL):  
     """異常系テスト - エラーが発生しても会話APIが正常に終了することを検証"""
     logging.info("=== 異常系テスト開始 ===")
 
@@ -249,7 +250,7 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
     initial_elements = initial_aria_res.get("aria_snapshot", [])
     logging.info("初期要素数: %d", len(initial_elements))
 
-    def mock_error_client(*args, **kwargs):  # pylint: disable=unused-argument
+    def mock_error_client(*args, **kwargs):  
         mock_client = MagicMock()
         mock_client.converse.side_effect = [
             Exception("テスト用のエラー"),
@@ -276,7 +277,7 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
             )
             logging.error("エラーが発生しませんでした")
             success = False
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:  
             first_error_occurred = True
             logging.info("想定通りエラーが発生しました: %s", e)
 
@@ -349,7 +350,7 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
                                 )
 
                         logging.info("エラー後のリカバリーが成功しました")
-            except Exception as e2:  # pylint: disable=broad-exception-caught
+            except Exception as e2:  
                 logging.error("エラー後のリカバリーに失敗しました: %s", e2)
                 success = False
 
@@ -364,7 +365,6 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
     assert success, "異常系テストが失敗しました"
 
 
-# pylint: disable=too-many-locals,too-many-statements
 def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
     """main.pyのE2Eテスト - 実際のmain.pyの処理を模倣してテスト"""
     logging.info("=== main.py E2Eテスト開始 ===")
@@ -451,7 +451,7 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
                     )
                     success = False
 
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:  
                 err_msg = str(e)
                 logging.error("Bedrock API呼び出しエラー: %s", err_msg)
                 result["status"] = "error"
@@ -545,28 +545,13 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
 
 def main():
     """メイン関数 - テストの実行を制御"""
-    # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
-        # pytestから実行される場合、余計な引数をフィルタリング
-        filtered_args = [sys.argv[0]]
-        for arg in sys.argv[1:]:
-            if arg in ["--debug", "--timeout"] or not arg.startswith("-"):
-                filtered_args.append(arg)
-        sys.argv = filtered_args
+    # テスト設定を適用
+    url = TEST_URL
+    timeout = TEST_TIMEOUT
 
-    parser = argparse.ArgumentParser(description="main.pyのE2Eテスト")
-    parser.add_argument(
-        "--debug", action="store_true", help="デバッグモードを有効にする"
-    )
-    parser.add_argument(
-        "--timeout", type=int, default=60, help="テスト全体のタイムアウト（秒）"
-    )
-    args = parser.parse_args()
-
-    # setup_loggingの呼び出しを修正
     setup_logging()
-    if args.debug or True:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # ログレベルを常にDEBUGに設定
+    logging.getLogger().setLevel(logging.DEBUG)
 
     logging.info(
         "main.py E2Eテスト開始: headless=%s, CI=%s",
@@ -578,8 +563,6 @@ def main():
 
     try:
         # テスト関数を実行し、必要に応じてassert文を評価
-        pass
-
         try:
             test_normal_case()  # 戻り値を使用しない
             normal_success = True
@@ -607,7 +590,7 @@ def main():
 
         logging.error("一部のテストが失敗しました")
         return 1
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:  
         logging.error("テスト実行中にエラーが発生しました: %s", e)
         traceback.print_exc()
         return 1
@@ -615,7 +598,7 @@ def main():
         try:
             cleanup_browser()
             logging.info("ブラウザのクリーンアップが完了しました")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:  
             logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
             traceback.print_exc()
 
