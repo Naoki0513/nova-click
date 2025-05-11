@@ -23,6 +23,7 @@ from ..utils import add_debug_log, log_operation_error
 from .utils import (
     get_screen_size,
     is_headless,
+    ensure_element_visible,
 )
 from . import snapshot as snapshot_mod
 
@@ -317,10 +318,10 @@ async def _async_worker() -> None:  # noqa: C901
 
     # 初期ページ表示
     try:
-        add_debug_log("ワーカースレッド: 初期ページ(Google)を読み込みます")
-        await page.goto("https://www.google.com/", wait_until="networkidle", timeout=constants.DEFAULT_TIMEOUT_MS)
+        add_debug_log("ワーカースレッド: 初期ページを読み込みます")
+        await page.goto(constants.DEFAULT_INITIAL_URL, wait_until="networkidle", timeout=constants.DEFAULT_TIMEOUT_MS)
         await page.evaluate("() => { window.focus(); document.body.click(); }")
-        add_debug_log("ワーカースレッド: 初期ページの読み込みが完了しました")
+        add_debug_log(f"ワーカースレッド: 初期ページ({constants.DEFAULT_INITIAL_URL})の読み込みが完了しました")
     except PlaywrightTimeoutError as e:
         add_debug_log(f"ワーカースレッド: 初期ページの読み込みでエラーが発生しました: {e}")
     except Exception as e:  # pragma: no cover
@@ -376,6 +377,10 @@ async def _async_worker() -> None:  # noqa: C901
                 try:
                     selector = f"[data-ref-id='ref-{ref_id}']"
                     locator = page.locator(selector)
+
+                    # 要素をビューポート内に収めるユーティリティを呼び出し
+                    await ensure_element_visible(page, locator)
+
                     try:
                         await locator.click(timeout=constants.DEFAULT_TIMEOUT_MS)
                     except PlaywrightTimeoutError as te_click:
@@ -385,28 +390,9 @@ async def _async_worker() -> None:  # noqa: C901
                         snapshot_list = await snapshot_mod.take_aria_snapshot(page)
                         _res_queue.put({"status": "error", "message": error_msg, "aria_snapshot": snapshot_list})
                         continue
-                    except Exception as e_click:
-                        msg = str(e_click)
-                        if "outside of the viewport" in msg:
-                            add_debug_log("要素がビューポート外: 自動スクロール＆再試行を実行", level="WARNING")
-                            box = await locator.bounding_box()
-                            vp_info = await page.evaluate("() => ({height: window.innerHeight})")
-                            if box and isinstance(vp_info, dict):
-                                y_coord, height_val, vp_h = box.get("y", 0), box.get("height", 0), vp_info.get("height", 0)
-                                scroll_amt = 0
-                                if y_coord < 0:
-                                    scroll_amt = y_coord - 20
-                                elif y_coord + height_val > vp_h:
-                                    scroll_amt = y_coord + height_val - vp_h + 20
-                                if scroll_amt:
-                                    await page.evaluate(f"() => window.scrollBy(0, {scroll_amt})")
-                            await locator.evaluate("el => el.scrollIntoView({block: 'center', inline: 'center'})")
-                            try:
-                                await locator.click(timeout=constants.DEFAULT_TIMEOUT_MS)
-                            except Exception:
-                                await locator.click(force=True, timeout=constants.DEFAULT_TIMEOUT_MS)
-                        else:
-                            raise
+                    except Exception:
+                        # 通常クリックに失敗した場合は ``force=True`` で最終試行
+                        await locator.click(force=True, timeout=constants.DEFAULT_TIMEOUT_MS)
                     _res_queue.put({"status": "success", "message": f"ref_id={ref_id} の要素をクリックしました"})
                 except Exception as e:
                     current_url = page.url if hasattr(page, "url") else "不明"
@@ -431,6 +417,10 @@ async def _async_worker() -> None:  # noqa: C901
                 try:
                     selector = f"[data-ref-id='ref-{ref_id}']"
                     locator = page.locator(selector)
+
+                    # 要素をビューポート内に収める
+                    await ensure_element_visible(page, locator)
+
                     try:
                         await locator.fill("", timeout=constants.DEFAULT_TIMEOUT_MS)
                         await locator.fill(text, timeout=constants.DEFAULT_TIMEOUT_MS)

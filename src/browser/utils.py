@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Tuple
+from typing import Tuple, TYPE_CHECKING
 
 # ルート utils からデバッグログを再利用
 from ..utils import add_debug_log
@@ -88,7 +88,90 @@ def get_screen_size() -> Tuple[int, int]:  # noqa: D401
             add_debug_log(f"スクリーンサイズ取得エラー (不明): {exc}", level="WARNING")
         return 1920, 1080
 
+# Playwright 型ヒント用 (ランタイム依存回避)
+if TYPE_CHECKING:  # pragma: no cover
+    from playwright.async_api import Page, Locator
+
 __all__ = [
     "is_headless",
     "get_screen_size",
-] 
+    "ensure_element_visible",
+]
+
+# ---------------------------------------------------------------------------
+# スクロールユーティリティ
+# ---------------------------------------------------------------------------
+
+async def _scroll_strategies(page: "Page", locator: "Locator", attempt: int) -> None:
+    """試行回数に応じて異なるスクロール戦略を実行します。
+
+    0回目 : ``scrollIntoView`` で要素を中央へ
+    1回目 : ページトップへ移動 (上方向のナビゲーションメニューなどに対応)
+    2回目 : ページボトムへ移動 (フッターなどに対応)
+    それ以降: 何もしない
+    """
+
+    try:
+        if attempt == 0:
+            # 要素自身を中央にスクロール
+            await locator.evaluate(
+                "el => el.scrollIntoView({block: 'center', inline: 'center'})"
+            )
+        elif attempt == 1:
+            # ページトップへ
+            await page.evaluate("() => window.scrollTo({top: 0, behavior: 'auto'})")
+        elif attempt == 2:
+            # ページボトムへ
+            await page.evaluate(
+                "() => window.scrollTo({top: document.body.scrollHeight, behavior: 'auto'})"
+            )
+    except Exception as exc:  # pragma: no cover
+        # スクロール戦略自体が失敗しても握り潰す
+        add_debug_log(f"_scroll_strategies: スクロール失敗: {exc}", level="DEBUG")
+
+async def ensure_element_visible(
+    page: "Page", locator: "Locator", max_attempts: int = 3
+) -> None:  # noqa: D401
+    """要素がビューポート内に入るよう自動スクロールを試みます。
+
+    Playwright は要素操作時に自動スクロールしますが、ナビゲーションバーの
+    ように *ページトップまでスクロールしなければ* DOM上に現れない要素や、
+    sticky ヘッダーの背後に隠れてしまう要素が存在します。
+
+    そこで以下の手順で最大 ``max_attempts`` 回までスクロールを試行します。
+
+    1. ``scrollIntoView`` を使用して中央へ移動
+    2. ページトップへスクロール
+    3. ページボトムへスクロール
+
+    それでも要素がビューポート外の場合は呼び出し元で例外処理してください。
+    """
+
+    for attempt in range(max_attempts):
+        try:
+            # 要素が既にビューポート内か判定 (bounding_box が取得できればOK)
+            box = await locator.bounding_box()
+            if box is not None:
+                vp_info = await page.evaluate(
+                    "() => ({width: window.innerWidth, height: window.innerHeight})"
+                )
+                if (
+                    0 <= box["y"] <= vp_info["height"] - box["height"]
+                    and 0 <= box["x"] <= vp_info["width"] - box["width"]
+                ):
+                    return  # ビューポート内
+        except Exception:
+            # bounding_box が取得出来ない場合はスクロールを試みる
+            pass
+
+        # スクロール戦略を実行
+        await _scroll_strategies(page, locator, attempt)
+
+        # スクロール直後は描画が落ち着くまで僅かに待機
+        await asyncio.sleep(0.1)
+
+    # ここまで到達した場合は要素をビューポート内に収められなかった
+    add_debug_log(
+        "ensure_element_visible: 要素をビューポート内に表示できませんでした",
+        level="DEBUG",
+    ) 

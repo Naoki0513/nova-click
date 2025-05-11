@@ -27,6 +27,13 @@ from src.browser import (  # pylint: disable=wrong-import-position,import-error
 from src.utils import \
     setup_logging  # pylint: disable=wrong-import-position,import-error
 
+# テスト用パラメータ（自由に変更可能）
+TEST_URL = "https://www.google.co.jp/"
+TEST_MODEL_ID = "test-model"
+TEST_SYSTEM_PROMPT = "テスト用システムプロンプト"
+TEST_USER_QUERY = "テストクエリ"
+TEST_MAX_TURNS = 3
+
 MOCK_BEDROCK_RESPONSE = {
     "output": {
         "message": {
@@ -112,7 +119,7 @@ def verify_api_response(response: Dict[str, Any]) -> bool:
     return success
 
 
-def test_normal_case():
+def test_normal_case(url=TEST_URL):
     """正常系テスト - 通常の会話APIフロー"""
     logging.info("=== 正常系テスト開始 ===")
 
@@ -122,7 +129,7 @@ def test_normal_case():
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
         assert False, "ブラウザ初期化に失敗"
 
-    goto_res = goto_url("https://www.google.co.jp/")
+    goto_res = goto_url(url)
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
         assert False, "URL移動に失敗"
@@ -139,9 +146,9 @@ def test_normal_case():
     # Bedrock API呼び出しテスト
     success = True
     with patch("src.bedrock.create_bedrock_client", side_effect=mock_bedrock_client):
-        messages = [{"role": "user", "content": [{"text": "テストクエリ"}]}]
-        system_prompt = "テスト用システムプロンプト"
-        model_id = "test-model"
+        messages = [{"role": "user", "content": [{"text": TEST_USER_QUERY}]}]
+        system_prompt = TEST_SYSTEM_PROMPT
+        model_id = TEST_MODEL_ID
         tool_config = {"tools": [], "toolChoice": {"auto": {}}}
 
         mock_client = mock_bedrock_client()
@@ -205,7 +212,7 @@ def test_normal_case():
     assert success, "正常系テストが失敗しました"
 
 
-def test_error_case():  # pylint: disable=too-many-return-statements
+def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
     """異常系テスト - エラーが発生しても会話APIが正常に終了することを検証"""
     logging.info("=== 異常系テスト開始 ===")
 
@@ -216,7 +223,7 @@ def test_error_case():  # pylint: disable=too-many-return-statements
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
         assert False, "ブラウザ初期化に失敗"
 
-    goto_res = goto_url("https://www.google.co.jp/")
+    goto_res = goto_url(url)
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
         assert False, "URL移動に失敗"
@@ -241,10 +248,10 @@ def test_error_case():  # pylint: disable=too-many-return-statements
     # API呼び出しの異常系テスト
     with patch("src.bedrock.create_bedrock_client", side_effect=mock_error_client):
         messages: list[dict[str, Any]] = [
-            {"role": "user", "content": [{"text": "テストクエリ"}]}
+            {"role": "user", "content": [{"text": TEST_USER_QUERY}]}
         ]
-        system_prompt = "テスト用システムプロンプト"
-        model_id = "test-model"
+        system_prompt = TEST_SYSTEM_PROMPT
+        model_id = TEST_MODEL_ID
         tool_config = {"tools": [], "toolChoice": {"auto": {}}}
 
         mock_client = mock_error_client()
@@ -329,7 +336,7 @@ def test_error_case():  # pylint: disable=too-many-return-statements
 
 
 # pylint: disable=too-many-locals,too-many-statements
-def test_main_e2e():
+def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
     """main.pyのE2Eテスト - 実際のmain.pyの処理を模倣してテスト"""
     logging.info("=== main.py E2Eテスト開始 ===")
 
@@ -338,7 +345,7 @@ def test_main_e2e():
         logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
         assert False, "ブラウザ初期化に失敗"
 
-    goto_res = goto_url("https://www.google.co.jp/")
+    goto_res = goto_url(url)
     if goto_res.get("status") != "success":
         logging.error("URL移動に失敗: %s", goto_res.get("message"))
         assert False, "URL移動に失敗"
@@ -355,10 +362,10 @@ def test_main_e2e():
     success = True
     with patch("src.bedrock.create_bedrock_client", side_effect=mock_bedrock_client):
         messages: list[dict[str, Any]] = [
-            {"role": "user", "content": [{"text": "テストクエリ"}]}
+            {"role": "user", "content": [{"text": TEST_USER_QUERY}]}
         ]
-        system_prompt = "テスト用システムプロンプト"
-        model_id = "test-model"
+        system_prompt = TEST_SYSTEM_PROMPT
+        model_id = TEST_MODEL_ID
         tool_config = {"tools": [], "toolChoice": {"auto": {}}}
 
         result = {
@@ -371,7 +378,6 @@ def test_main_e2e():
             },
         }
 
-        max_turns = 3
         turn_count = 0
 
         while turn_count < max_turns:
@@ -504,7 +510,10 @@ def main():
     )
     args = parser.parse_args()
 
-    setup_logging(debug=args.debug or True)
+    # setup_loggingの呼び出しを修正
+    setup_logging()
+    if args.debug or True:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     logging.info(
         "main.py E2Eテスト開始: headless=%s, CI=%s",

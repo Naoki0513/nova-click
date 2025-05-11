@@ -11,6 +11,20 @@
 
 ## 変更履歴
 
+- ブラウザの初期ページURLをmain.pyで設定できるようにしました。
+  - `main.py` に `DEFAULT_INITIAL_URL` 定数を追加
+  - ハードコードされていたGoogleのURLを定数で参照するように修正
+  - ユーザーが初期ページを自由に変更できるようになり、特定のサイトを起点とした操作が容易になりました
+
+- テスト用パラメータを統一して管理するよう修正しました。各テストスクリプトでより柔軟にパラメータを変更できます。
+  - `tests/input_text_test.py`、`tests/click_element_test.py`、`tests/get_aria_snapshot.py`、`tests/main_e2e_test.py` に統一された形式でテストパラメータ変数を追加
+  - URL、ref_id、入力テキストなどのパラメータをスクリプト上部で定義し、関数のデフォルト値や引数として使用するよう変更
+  - テスト実行時にパラメータを簡単に変更可能になり、テストの柔軟性が向上
+
+- スマートスクロール機能を追加しました。ビューポート外の要素操作時に自動でページをトップ・ボトムへスクロールし、要素を確実にビューポート内へ表示します。
+  - `src/browser/utils.py` に `ensure_element_visible` ユーティリティを実装
+  - `src/browser/actions.py` の `click_element` と `input_text` で同ユーティリティを利用し、従来の手動スクロールロジックを廃止
+
 - プロンプトキャッシュ機能を実装しました。Amazon Bedrock API呼び出し時にシステムプロンプトとユーザーメッセージにキャッシュポイントを挿入し、トークン効率を向上させます。
   - `src/bedrock.py` のリクエスト構造を更新し、正しい形式でキャッシュポイントを追加
   - Amazon Bedrock APIの「タグ付き共用体」構造に対応し、システムプロンプトとキャッシュポイントを別オブジェクトとして設定
@@ -27,6 +41,12 @@
   - テスト実行中にタイムアウトした場合の処理を強化
   - 存在しない要素を使用した場合のフォールバック処理を実装
   - CI環境でのシステム依存関係のインストールを修正（libasound2t64 → libasound2）
+- main.pyからテスト用定数を削除
+  - `TEST_DEFAULT_URL` および `INPUT_TEXT_TEST_TIMEOUT` を削除
+  - テスト用スクリプトで各定数をハードコーディングに変更
+    - `tests/get_aria_snapshot.py`: デフォルトURL "https://www.google.co.jp/" を直接指定
+    - `tests/input_text_test.py`: タイムアウト値 60 を直接指定
+    - `tests/click_element_test.py`: setup_logging 関数の呼び出し方法を修正
 
 ## インストール
 

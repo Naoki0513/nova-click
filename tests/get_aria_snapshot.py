@@ -23,12 +23,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # pylint: disable=wrong-import-position
 from src.utils import setup_logging
 from src.browser import initialize_browser, goto_url, get_aria_snapshot, cleanup_browser
-import main as constants
 # pylint: enable=wrong-import-position
 
-# テスト用パラメータ
-# URL = "https://www.google.com/" # constantsから参照
-DEBUG_MODE = False
+# テスト用パラメータ（自由に変更可能）
+TEST_URL = "https://www.google.co.jp/maps/"
+DEBUG_MODE = True
 
 
 def main():
@@ -50,12 +49,14 @@ def main():
     parser.add_argument(
         '--url',
         type=str,
-        default=constants.TEST_DEFAULT_URL,
+        default=TEST_URL,
         help='テスト対象のURL'
     )
     args = parser.parse_args()
 
-    setup_logging(debug=args.debug or DEBUG_MODE)
+    setup_logging()
+    if args.debug or DEBUG_MODE:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info("Test parameters: url=%s, headless=%s",

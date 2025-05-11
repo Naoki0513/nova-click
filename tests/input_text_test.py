@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """input_textテストスクリプト
 
 指定されたURLを開き、ref_id で指定した要素にテキストを入力してEnterを押すテストを行います。
@@ -22,8 +21,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # pylint: disable=wrong-import-position
 from src.browser import initialize_browser, goto_url, input_text, get_aria_snapshot, cleanup_browser
 from src.utils import setup_logging
-import main as constants
 # pylint: enable=wrong-import-position
+
+# テスト用パラメータ（自由に変更可能）
+TEST_URL = "https://www.google.co.jp/"
+TEST_REF_ID = 13
+TEST_TEXT = "Amazon"
+TEST_TIMEOUT = 10
+# 異常系テスト用
+TEST_ERROR_REF_ID = 9999
 
 
 def timeout_handler(_signum, _frame):
@@ -37,7 +43,7 @@ if sys.platform == "win32":
     logging.warning("Windows環境ではテストのタイムアウト処理が限定的になります。")
 
 
-def test_normal_case(url="https://www.google.co.jp/", ref_id=13, text="Amazon", operation_timeout=10):
+def test_normal_case(url=TEST_URL, ref_id=TEST_REF_ID, text=TEST_TEXT, operation_timeout=TEST_TIMEOUT):
     """正常系テスト - 指定された要素にテキストを入力する"""
     logging.info("=== 正常系テスト開始: url=%s, ref_id=%s, text='%s' ===", url, ref_id, text)
 
@@ -225,7 +231,7 @@ def test_normal_case(url="https://www.google.co.jp/", ref_id=13, text="Amazon", 
     assert True
 
 
-def test_error_case(url="https://www.google.co.jp/", ref_id=9999, text="Amazon", operation_timeout=10):
+def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID, text=TEST_TEXT, operation_timeout=TEST_TIMEOUT):
     """異常系テスト - 存在しない要素にテキストを入力する"""
     logging.info("=== 異常系テスト開始: url=%s, 存在しないref_id=%s, text='%s' ===",
                 url, ref_id, text)
@@ -315,15 +321,17 @@ def main():
 
     parser = argparse.ArgumentParser(description='input_textのテスト')
     parser.add_argument('--debug', action='store_true', help='デバッグモードを有効にする')
-    parser.add_argument('--url', type=str, default="https://www.google.co.jp/",
+    parser.add_argument('--url', type=str, default=TEST_URL,
                         help='テスト対象のURL')
-    parser.add_argument('--ref-id', type=int, default=13, help='テキストを入力する要素のref_id')
-    parser.add_argument('--text', type=str, default="Amazon", help='入力するテキスト')
-    parser.add_argument('--timeout', type=int, default=constants.INPUT_TEXT_TEST_TIMEOUT,
+    parser.add_argument('--ref-id', type=int, default=TEST_REF_ID, help='テキストを入力する要素のref_id')
+    parser.add_argument('--text', type=str, default=TEST_TEXT, help='入力するテキスト')
+    parser.add_argument('--timeout', type=int, default=60,
                         help='テスト全体のタイムアウト（秒）')
     args = parser.parse_args()
 
-    setup_logging(debug=args.debug or True)
+    setup_logging()
+    if args.debug or True:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info("Test parameters: url=%s, ref_id=%s, text='%s', headless=%s, timeout=%s秒",
@@ -349,9 +357,8 @@ def main():
         except AssertionError as e:
             logging.error("正常系テスト失敗: %s", e)
 
-        non_existent_ref_id = 9999  # 存在しないref_id
         try:
-            test_error_case(args.url, non_existent_ref_id, args.text)
+            test_error_case(args.url, TEST_ERROR_REF_ID, args.text)
             error_success = True
         except AssertionError as e:
             logging.error("異常系テスト失敗: %s", e)

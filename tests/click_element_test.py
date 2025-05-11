@@ -22,9 +22,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # pylint: disable=wrong-import-position
 from src.browser import initialize_browser, goto_url, get_aria_snapshot, click_element, cleanup_browser
 from src.utils import setup_logging
+# pylint: enable=wrong-import-position
+
+# テスト用パラメータ（自由に変更可能）
+TEST_URL = "https://www.google.co.jp/"
+TEST_REF_ID = 26
+# 異常系テスト用
+TEST_ERROR_REF_ID = 9999
 
 
-def test_normal_case(url="https://www.google.co.jp/", ref_id=26):
+def test_normal_case(url=TEST_URL, ref_id=TEST_REF_ID):
     """正常系テスト - 指定された要素をクリックする"""
     logging.info("=== 正常系テスト開始: url=%s, ref_id=%s ===", url, ref_id)
 
@@ -123,7 +130,7 @@ def test_normal_case(url="https://www.google.co.jp/", ref_id=26):
     assert True
 
 
-def test_error_case(url="https://www.google.co.jp/", ref_id=9999):
+def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID):
     """異常系テスト - 存在しない要素をクリックする"""
     logging.info("=== 異常系テスト開始: url=%s, 存在しないref_id=%s ===", url, ref_id)
 
@@ -186,12 +193,14 @@ def main():
 
     parser = argparse.ArgumentParser(description='click_elementのテスト')
     parser.add_argument('--debug', action='store_true', help='デバッグモードを有効にする')
-    parser.add_argument('--url', type=str, default="https://www.google.co.jp/",
+    parser.add_argument('--url', type=str, default=TEST_URL,
                         help='テスト対象のURL')
-    parser.add_argument('--ref-id', type=int, default=26, help='クリックする要素のref_id')
+    parser.add_argument('--ref-id', type=int, default=TEST_REF_ID, help='クリックする要素のref_id')
     args = parser.parse_args()
 
-    setup_logging(debug=args.debug or True)
+    setup_logging()
+    if args.debug or True:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
     logging.info("Test parameters: url=%s, ref_id=%s, headless=%s",
@@ -208,9 +217,8 @@ def main():
         except AssertionError as e:
             logging.error("正常系テスト失敗: %s", e)
         
-        non_existent_ref_id = 9999  # 存在しないref_id
         try:
-            test_error_case(args.url, non_existent_ref_id)
+            test_error_case(args.url, TEST_ERROR_REF_ID)
             error_success = True
         except AssertionError as e:
             logging.error("異常系テスト失敗: %s", e)
