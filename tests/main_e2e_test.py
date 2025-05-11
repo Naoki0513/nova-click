@@ -74,48 +74,48 @@ def verify_api_response(response: Dict[str, Any]) -> bool:
         bool: 検証が成功したかどうか
     """
     success = True
-    
+
     # 1. 基本的な構造チェック
     if not isinstance(response, dict):
         logging.error("APIレスポンスはdict型である必要があります")
         return False
-    
+
     # 2. 必須フィールドの存在チェック
     required_fields = ["output", "stopReason", "usage"]
     for field in required_fields:
         if field not in response:
             logging.error("必須フィールド '%s' がレスポンスにありません", field)
             success = False
-    
+
     if not success:
         return False
-    
+
     # 3. 出力メッセージの構造チェック
     output = response.get("output", {})
     message = output.get("message", {})
-    
+
     if not message.get("role"):
         logging.error("メッセージにroleフィールドがありません")
         success = False
-    
+
     content = message.get("content", [])
     if not content or not isinstance(content, list):
         logging.error("メッセージのcontentフィールドが不正です")
         success = False
-    
+
     # 4. 使用量情報のチェック
     usage = response.get("usage", {})
     usage_fields = ["inputTokens", "outputTokens", "totalTokens"]
     for field in usage_fields:
         if field not in usage:
             logging.warning("使用量情報に '%s' フィールドがありません", field)
-    
+
     # 5. stopReasonの解析
     stop_reason = response.get("stopReason")
     if stop_reason != "end_turn":
         logging.error("stopReasonが期待値 'end_turn' ではなく '%s' です", stop_reason)
         success = False
-    
+
     return success
 
 
@@ -139,7 +139,7 @@ def test_normal_case(url=TEST_URL):
     if aria_res.get("status") != "success":
         logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
         assert False, "ARIA Snapshot取得に失敗"
-    
+
     initial_elements = aria_res.get("aria_snapshot", [])
     logging.info("初期要素数: %d", len(initial_elements))
 
@@ -152,34 +152,37 @@ def test_normal_case(url=TEST_URL):
         tool_config = {"tools": [], "toolChoice": {"auto": {}}}
 
         mock_client = mock_bedrock_client()
-        
+
         # API呼び出し前の状態を記録
         pre_call_time = time.time()
-        
+
         response = call_bedrock_api(
             mock_client, messages, system_prompt, model_id, tool_config
         )
-        
+
         # API呼び出し後の経過時間を記録
         call_duration = time.time() - pre_call_time
         logging.info("API呼び出し所要時間: %.2f秒", call_duration)
-        
+
         # API呼び出し後の状態を検証
         post_api_aria_res = get_aria_snapshot()
         if post_api_aria_res.get("status") == "success":
             post_elements = post_api_aria_res.get("aria_snapshot", [])
             logging.info("API呼び出し後の要素数: %d", len(post_elements))
-            
+
             # DOM状態が変わっていないことを確認（API呼び出しはDOM操作を行わない）
             if len(initial_elements) != len(post_elements):
-                logging.warning("API呼び出し前後でDOM要素数が変化しています: %d → %d", 
-                             len(initial_elements), len(post_elements))
-        
+                logging.warning(
+                    "API呼び出し前後でDOM要素数が変化しています: %d → %d",
+                    len(initial_elements),
+                    len(post_elements),
+                )
+
         # レスポンスの詳細検証
         if not verify_api_response(response):
             logging.error("APIレスポンス検証に失敗しました")
             success = False
-            
+
         # stopReasonの検証（基本チェック）
         if response.get("stopReason") != "end_turn":
             logging.error(
@@ -196,13 +199,20 @@ def test_normal_case(url=TEST_URL):
                 success = False
 
     # ログに応答内容の詳細を出力
-    if 'response' in locals():
+    if "response" in locals():
         try:
             output = response.get("output", {})
             message = output.get("message", {})
             content = message.get("content", [])
             response_text = content[0].get("text") if content else "(テキストなし)"
-            logging.info("APIレスポンステキスト: %s", response_text[:100] + '...' if len(response_text) > 100 else response_text)
+            logging.info(
+                "APIレスポンステキスト: %s",
+                (
+                    response_text[:100] + "..."
+                    if len(response_text) > 100
+                    else response_text
+                ),
+            )
         except (KeyError, IndexError) as e:
             logging.warning("レスポンステキスト抽出中にエラー: %s", e)
 
@@ -231,9 +241,11 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
     # 初期状態のARIAスナップショット取得
     initial_aria_res = get_aria_snapshot()
     if initial_aria_res.get("status") != "success":
-        logging.error("初期ARIA Snapshot取得に失敗: %s", initial_aria_res.get("message"))
+        logging.error(
+            "初期ARIA Snapshot取得に失敗: %s", initial_aria_res.get("message")
+        )
         assert False, "初期ARIA Snapshot取得に失敗"
-    
+
     initial_elements = initial_aria_res.get("aria_snapshot", [])
     logging.info("初期要素数: %d", len(initial_elements))
 
@@ -267,17 +279,20 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
         except Exception as e:  # pylint: disable=broad-exception-caught
             first_error_occurred = True
             logging.info("想定通りエラーが発生しました: %s", e)
-            
+
             # エラー発生後のDOM状態を検証
             error_aria_res = get_aria_snapshot()
             if error_aria_res.get("status") == "success":
                 error_elements = error_aria_res.get("aria_snapshot", [])
                 logging.info("エラー発生後の要素数: %d", len(error_elements))
-                
+
                 # エラーによってDOM状態が変わっていないことを確認
                 if len(initial_elements) != len(error_elements):
-                    logging.warning("エラー発生前後でDOM要素数が変化しています: %d → %d", 
-                                 len(initial_elements), len(error_elements))
+                    logging.warning(
+                        "エラー発生前後でDOM要素数が変化しています: %d → %d",
+                        len(initial_elements),
+                        len(error_elements),
+                    )
 
             # 2回目のAPI呼び出しで正常に終了することを確認
             try:
@@ -289,7 +304,7 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
                 if not verify_api_response(response):
                     logging.error("2回目のAPIレスポンス検証に失敗しました")
                     success = False
-                
+
                 # レスポンスの検証
                 if response.get("stopReason") != "end_turn":
                     logging.error(
@@ -304,21 +319,35 @@ def test_error_case(url=TEST_URL):  # pylint: disable=too-many-return-statements
                         success = False
                     else:
                         # エラー後の回復であることを確認
-                        if 'response' in locals():
+                        if "response" in locals():
                             try:
                                 output = response.get("output", {})
                                 message = output.get("message", {})
                                 content = message.get("content", [])
-                                response_text = content[0].get("text") if content else "(テキストなし)"
-                                logging.info("回復後のAPIレスポンステキスト: %s", 
-                                           response_text[:100] + '...' if len(response_text) > 100 else response_text)
-                                
+                                response_text = (
+                                    content[0].get("text")
+                                    if content
+                                    else "(テキストなし)"
+                                )
+                                logging.info(
+                                    "回復後のAPIレスポンステキスト: %s",
+                                    (
+                                        response_text[:100] + "..."
+                                        if len(response_text) > 100
+                                        else response_text
+                                    ),
+                                )
+
                                 # 回復したレスポンスが期待するものか検証
                                 if "エラー" in response_text:
-                                    logging.info("回復レスポンスにエラーへの言及があります")
+                                    logging.info(
+                                        "回復レスポンスにエラーへの言及があります"
+                                    )
                             except (KeyError, IndexError) as e:
-                                logging.warning("回復レスポンステキスト抽出中にエラー: %s", e)
-                        
+                                logging.warning(
+                                    "回復レスポンステキスト抽出中にエラー: %s", e
+                                )
+
                         logging.info("エラー後のリカバリーが成功しました")
             except Exception as e2:  # pylint: disable=broad-exception-caught
                 logging.error("エラー後のリカバリーに失敗しました: %s", e2)
@@ -355,7 +384,7 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
     if aria_res.get("status") != "success":
         logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
         assert False, "ARIA Snapshot取得に失敗"
-    
+
     initial_elements = aria_res.get("aria_snapshot", [])
     logging.info("初期要素数: %d", len(initial_elements))
 
@@ -388,21 +417,25 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
             turn_start_aria_res = get_aria_snapshot()
             if turn_start_aria_res.get("status") == "success":
                 turn_start_elements = turn_start_aria_res.get("aria_snapshot", [])
-                logging.info("ターン %d 開始時の要素数: %d", turn_count, len(turn_start_elements))
+                logging.info(
+                    "ターン %d 開始時の要素数: %d", turn_count, len(turn_start_elements)
+                )
 
             try:
                 mock_client = mock_bedrock_client()
-                
+
                 # API呼び出し前の時刻を記録
                 api_start_time = time.time()
-                
+
                 response = call_bedrock_api(
                     mock_client, messages, system_prompt, model_id, tool_config
                 )
-                
+
                 # API呼び出し所要時間を記録
                 api_duration = time.time() - api_start_time
-                logging.info("ターン %d のAPI呼び出し所要時間: %.2f秒", turn_count, api_duration)
+                logging.info(
+                    "ターン %d のAPI呼び出し所要時間: %.2f秒", turn_count, api_duration
+                )
 
                 usage = response.get("usage", {})
                 result["token_usage"]["inputTokens"] += usage.get("inputTokens", 0)
@@ -410,10 +443,12 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
                 result["token_usage"]["totalTokens"] += usage.get(
                     "inputTokens", 0
                 ) + usage.get("outputTokens", 0)
-                
+
                 # レスポンスの詳細検証
                 if not verify_api_response(response):
-                    logging.error("ターン %d のAPIレスポンス検証に失敗しました", turn_count)
+                    logging.error(
+                        "ターン %d のAPIレスポンス検証に失敗しました", turn_count
+                    )
                     success = False
 
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -431,24 +466,37 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
             message_content = message.get("content", [])
             messages.append({"role": "assistant", "content": message_content})
             result["messages"].append({"role": "assistant", "content": message_content})
-            
+
             # レスポンスメッセージの内容を検証
             response_text = message_content[0].get("text") if message_content else ""
-            logging.info("ターン %d のレスポンステキスト: %s", 
-                       turn_count, response_text[:100] + '...' if len(response_text) > 100 else response_text)
+            logging.info(
+                "ターン %d のレスポンステキスト: %s",
+                turn_count,
+                (
+                    response_text[:100] + "..."
+                    if len(response_text) > 100
+                    else response_text
+                ),
+            )
 
             stop_analysis = analyze_stop_reason(stop_reason)
-            
+
             # ターン終了時のDOM状態を記録して変化を検証
             turn_end_aria_res = get_aria_snapshot()
             if turn_end_aria_res.get("status") == "success":
                 turn_end_elements = turn_end_aria_res.get("aria_snapshot", [])
-                logging.info("ターン %d 終了時の要素数: %d", turn_count, len(turn_end_elements))
-                
+                logging.info(
+                    "ターン %d 終了時の要素数: %d", turn_count, len(turn_end_elements)
+                )
+
                 if len(turn_start_elements) != len(turn_end_elements):
-                    logging.info("ターン %d 内でDOM要素数が変化しました: %d → %d", 
-                              turn_count, len(turn_start_elements), len(turn_end_elements))
-            
+                    logging.info(
+                        "ターン %d 内でDOM要素数が変化しました: %d → %d",
+                        turn_count,
+                        len(turn_start_elements),
+                        len(turn_end_elements),
+                    )
+
             if not stop_analysis["should_continue"]:
                 if stop_analysis["error"]:
                     result["status"] = "error"
@@ -471,16 +519,21 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
         if final_aria_res.get("status") == "success":
             final_elements = final_aria_res.get("aria_snapshot", [])
             logging.info("最終的な要素数: %d", len(final_elements))
-            
+
             if len(initial_elements) != len(final_elements):
-                logging.info("テスト全体でDOM要素数が変化しました: %d → %d", 
-                          len(initial_elements), len(final_elements))
-        
+                logging.info(
+                    "テスト全体でDOM要素数が変化しました: %d → %d",
+                    len(initial_elements),
+                    len(final_elements),
+                )
+
         # トークン使用量を確認
-        logging.info("トークン使用量: 入力=%d, 出力=%d, 合計=%d",
-                   result["token_usage"]["inputTokens"],
-                   result["token_usage"]["outputTokens"],
-                   result["token_usage"]["totalTokens"])
+        logging.info(
+            "トークン使用量: 入力=%d, 出力=%d, 合計=%d",
+            result["token_usage"]["inputTokens"],
+            result["token_usage"]["outputTokens"],
+            result["token_usage"]["totalTokens"],
+        )
 
         if success:
             logging.info("E2Eテスト成功: %dターンで正常に終了", turn_count)
@@ -493,11 +546,11 @@ def test_main_e2e(url=TEST_URL, max_turns=TEST_MAX_TURNS):
 def main():
     """メイン関数 - テストの実行を制御"""
     # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith('__main__.py'):
+    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
         # pytestから実行される場合、余計な引数をフィルタリング
         filtered_args = [sys.argv[0]]
         for arg in sys.argv[1:]:
-            if arg in ['--debug', '--timeout'] or not arg.startswith('-'):
+            if arg in ["--debug", "--timeout"] or not arg.startswith("-"):
                 filtered_args.append(arg)
         sys.argv = filtered_args
 
@@ -525,28 +578,25 @@ def main():
 
     try:
         # テスト関数を実行し、必要に応じてassert文を評価
-        success = True
-        
+        pass
+
         try:
             test_normal_case()  # 戻り値を使用しない
             normal_success = True
         except AssertionError:
             normal_success = False
-            success = False
-            
+
         try:
             test_error_case()  # 戻り値を使用しない
             error_success = True
         except AssertionError:
             error_success = False
-            success = False
-            
+
         try:
             test_main_e2e()  # 戻り値を使用しない
             e2e_success = True
         except AssertionError:
             e2e_success = False
-            success = False
 
         elapsed_time = time.time() - start_time
         logging.info("テスト実行時間: %.2f秒", elapsed_time)

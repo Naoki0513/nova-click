@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """browser.snapshot
 
 Playwright の ``page`` オブジェクトを用いて ARIA Snapshot を取得する
@@ -8,9 +6,12 @@ Playwright の ``page`` オブジェクトを用いて ARIA Snapshot を取得�
 しやすくしています。
 """
 
-from typing import Any, Dict, List, Tuple
+from __future__ import annotations
+
+from typing import Any, Dict, List
 
 import main as constants
+
 from ..utils import add_debug_log
 
 __all__ = [
@@ -115,15 +116,21 @@ _JS_GET_SNAPSHOT = r"""() => {
     return { snapshot: snapshotResult, errorCount: errorCount };
 }"""
 
+
 async def get_snapshot_with_stats(page: Any) -> Dict[str, Any]:
     """Playwright ``page`` からスナップショットを取得し統計情報を付与して返します。"""
 
-    add_debug_log("snapshot.get_snapshot_with_stats: JavaScript でスナップショットを取得")
+    add_debug_log(
+        "snapshot.get_snapshot_with_stats: JavaScript でスナップショットを取得"
+    )
     result = await page.evaluate(_JS_GET_SNAPSHOT)
 
     # 期待する型チェック
     if not isinstance(result, dict):
-        add_debug_log("snapshot.get_snapshot_with_stats: JS から期待しない型が返却されました", level="WARNING")
+        add_debug_log(
+            "snapshot.get_snapshot_with_stats: JS から期待しない型が返却されました",
+            level="WARNING",
+        )
         return {"snapshot": [], "errorCount": 1, "error": "Unexpected return from JS"}
 
     return result  # type: ignore[return-value]
@@ -139,4 +146,4 @@ async def take_aria_snapshot(page: Any) -> List[Dict[str, Any]]:
     filtered = [e for e in snapshot_list if e.get("role") in constants.ALLOWED_ROLES]
 
     add_debug_log(f"snapshot.take_aria_snapshot: {len(filtered)} 要素を取得")
-    return filtered 
+    return filtered

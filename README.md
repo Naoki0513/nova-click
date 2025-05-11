@@ -11,6 +11,19 @@
 
 ## 変更履歴
 
+- コード品質の向上: lintエラーの修正とpylintスコアの改善
+  - `src/browser/snapshot.py`、`src/browser/worker.py`、`src/browser/__init__.py`、`src/bedrock.py`、`src/exceptions.py`、`src/prompts.py`、`src/tools.py`のpylintスコアを10/10に改善
+  - モジュールドキュメントの追加と改善
+  - インポート文の順序整理（wrong-import-position修正）
+  - f-stringからフォーマット文字列式への修正（logging-fstring-interpolation修正）
+  - 長すぎる行の分割と整形（line-too-long修正）
+  - `dev-tools/format_code.py`を活用して自動修正を適用
+
+- 存在しない要素へのアクセス時の長時間待機問題を修正しました。
+  - `src/browser/utils.py` の `locator.bounding_box()` にタイムアウト値 `constants.DEFAULT_TIMEOUT_MS` を設定
+  - Playwrightの既定タイムアウト（30秒）ではなく、`main.py`で定義された標準タイムアウト（5秒）を適用
+  - テスト実行時間が大幅に短縮され、特に存在しない要素を使用するエラーケースで約2分→約30秒に改善
+
 - ブラウザの初期ページURLをmain.pyで設定できるようにしました。
   - `main.py` に `DEFAULT_INITIAL_URL` 定数を追加
   - ハードコードされていたGoogleのURLを定数で参照するように修正

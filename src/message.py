@@ -8,6 +8,15 @@ import json
 import logging
 from typing import Any
 
+import main as constants  # エントリポイントの定数を参照
+from src.bedrock import (BedrockAPIError, analyze_stop_reason,
+                         call_bedrock_api, create_bedrock_client,
+                         extract_tool_calls, update_token_usage)
+from src.browser import cleanup_browser, get_aria_snapshot, initialize_browser
+from src.prompts import get_system_prompt
+from src.tools import dispatch_browser_tool, get_browser_tools_config
+from src.utils import load_credentials, setup_logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -151,20 +160,6 @@ def create_tool_result_message(tool_results: list[dict[str, Any]]) -> dict[str, 
 # 会話ループ処理（main.py から移設）
 # ---------------------------------------------------------------------------
 
-import main as constants  # エントリポイントの定数を参照
-from src.bedrock import (
-    analyze_stop_reason,
-    call_bedrock_api,
-    create_bedrock_client,
-    extract_tool_calls,
-    update_token_usage,
-    BedrockAPIError,
-)
-from src.browser import cleanup_browser, get_aria_snapshot, initialize_browser
-from src.prompts import get_system_prompt
-from src.tools import dispatch_browser_tool, get_browser_tools_config
-from src.utils import load_credentials, setup_logging
-
 
 def run_cli_mode() -> int:  # noqa: D401
     """ブラウザ操作エージェントを実行します。メインロジック。"""
@@ -286,7 +281,9 @@ def run_cli_mode() -> int:  # noqa: D401
                 # ツール実行
                 tool_result_data = dispatch_browser_tool(tool_name, tool_input)
 
-                tool_results.append({"toolUseId": tool_use_id, "result": tool_result_data})
+                tool_results.append(
+                    {"toolUseId": tool_use_id, "result": tool_result_data}
+                )
 
             # ツール結果メッセージを作成
             tool_result_message = create_tool_result_message(tool_results)

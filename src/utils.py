@@ -14,6 +14,8 @@ import sys
 import traceback
 from typing import Any, Union
 
+import main as constants
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,8 +24,6 @@ def setup_logging() -> None:
     アプリケーション全体のロギング設定を行います。
     main.pyで設定されたLOG_LEVELを参照して、ログレベルを設定します。
     """
-    import main as constants
-    
     root_logger = logging.getLogger()
 
     # 既存のハンドラをすべて削除（設定の重複を防ぐため）
@@ -34,11 +34,11 @@ def setup_logging() -> None:
     is_ci = os.environ.get("CI", "false").lower() == "true"
     log_level_name = constants.LOG_LEVEL if hasattr(constants, "LOG_LEVEL") else "INFO"
     log_level = getattr(logging, log_level_name, logging.INFO)
-    
+
     # CI環境の場合は常にINFOレベル以上を表示
     if is_ci and log_level > logging.INFO:
         log_level = logging.INFO
-        
+
     root_logger.setLevel(log_level)
 
     # コンソールハンドラを作成・設定
@@ -175,7 +175,7 @@ def log_operation_error(
             details_str = f" ({details})"
 
     # エラーメッセージを常にINFOレベルで出力
-    logger.info(f"操作エラー - {operation_type}: {error_msg}{details_str}")
+    logger.info("操作エラー - %s: %s%s", operation_type, error_msg, details_str)
 
 
 def log_json_debug(

@@ -10,19 +10,21 @@ Usage:
 環境変数:
     HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
 """
-import sys
-import os
+import argparse
 import json
 import logging
-import argparse
+import os
+import sys
 import traceback
 
 # プロジェクトルートをPythonパスに追加
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from src.browser import (cleanup_browser, get_aria_snapshot, goto_url,
+                         initialize_browser)
 # pylint: disable=wrong-import-position
 from src.utils import setup_logging
-from src.browser import initialize_browser, goto_url, get_aria_snapshot, cleanup_browser
+
 # pylint: enable=wrong-import-position
 
 # テスト用パラメータ（自由に変更可能）
@@ -36,22 +38,19 @@ def main():
     コマンドライン引数でURLやデバッグモードを制御できます。
     """
     # pytestから実行される場合は、sys.argvを変更して余計な引数を削除
-    if len(sys.argv) > 1 and sys.argv[0].endswith('__main__.py'):
+    if len(sys.argv) > 1 and sys.argv[0].endswith("__main__.py"):
         # pytestから実行される場合、余計な引数をフィルタリング
         filtered_args = [sys.argv[0]]
         for arg in sys.argv[1:]:
-            if arg in ['--debug', '--url'] or not arg.startswith('-'):
+            if arg in ["--debug", "--url"] or not arg.startswith("-"):
                 filtered_args.append(arg)
         sys.argv = filtered_args
 
-    parser = argparse.ArgumentParser(description='ARIAスナップショットのテスト')
-    parser.add_argument('--debug', action='store_true', help='デバッグモードを有効にする')
+    parser = argparse.ArgumentParser(description="ARIAスナップショットのテスト")
     parser.add_argument(
-        '--url',
-        type=str,
-        default=TEST_URL,
-        help='テスト対象のURL'
+        "--debug", action="store_true", help="デバッグモードを有効にする"
     )
+    parser.add_argument("--url", type=str, default=TEST_URL, help="テスト対象のURL")
     args = parser.parse_args()
 
     setup_logging()
@@ -59,72 +58,87 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # テストパラメータを出力
-    logging.info("Test parameters: url=%s, headless=%s",
-                 args.url, os.environ.get('HEADLESS', 'false'))
+    logging.info(
+        "Test parameters: url=%s, headless=%s",
+        args.url,
+        os.environ.get("HEADLESS", "false"),
+    )
 
     try:
         # ブラウザ起動
         init_res = initialize_browser()
         if init_res.get("status") != "success":
-            logging.error("ブラウザ初期化に失敗: %s", init_res.get('message'))
+            logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
             return 1
 
         # URLに移動
         goto_res = goto_url(args.url)
         if goto_res.get("status") != "success":
-            logging.error("URL移動に失敗: %s", goto_res.get('message'))
+            logging.error("URL移動に失敗: %s", goto_res.get("message"))
             return 1
-        
+
         current_url = goto_res.get("current_url", args.url)
         logging.info("ページに移動しました: %s", current_url)
-        
+
         # 検証: 正しいURLに移動できたか
         if current_url != args.url and not current_url.startswith(args.url):
-            logging.warning("移動先URLが指定URLと異なります: 指定=%s, 実際=%s", args.url, current_url)
+            logging.warning(
+                "移動先URLが指定URLと異なります: 指定=%s, 実際=%s",
+                args.url,
+                current_url,
+            )
 
         # ARIA Snapshot取得
         snap_res = get_aria_snapshot()
         if snap_res.get("status") != "success":
-            logging.error("ARIA Snapshot取得に失敗: %s", snap_res.get('message'))
+            logging.error("ARIA Snapshot取得に失敗: %s", snap_res.get("message"))
             return 1
 
         snapshot = snap_res.get("aria_snapshot", [])
         logging.info("取得した要素数: %d", len(snapshot))
-        
+
         # 検証: スナップショットの基本的な有効性チェック
         if not snapshot:
             logging.error("ARIAスナップショットが空です")
             return 1
-        
+
         # スナップショットの基本的な構造を検証
         valid_structure = all(isinstance(e, dict) for e in snapshot)
         if not valid_structure:
             logging.error("ARIAスナップショットの構造が無効です")
             return 1
-        
+
         # 基本的な要素の存在確認
-        key_roles = ['document', 'heading', 'link']
+        key_roles = ["document", "heading", "link"]
         found_roles = {role: False for role in key_roles}
-        
+
         for element in snapshot:
-            role = element.get('role')
+            role = element.get("role")
             if role in key_roles:
                 found_roles[role] = True
-                logging.info("基本要素を発見: role=%s, name=%s", 
-                           role, element.get('name', '(名前なし)'))
-        
+                logging.info(
+                    "基本要素を発見: role=%s, name=%s",
+                    role,
+                    element.get("name", "(名前なし)"),
+                )
+
         for role, found in found_roles.items():
             if found:
                 logging.info("基本要素 '%s' が存在します", role)
             else:
                 logging.warning("基本要素 '%s' が見つかりません", role)
-        
+
         # 結果出力（最初の10要素だけ詳細表示）
         logging.info("スナップショットの最初の10要素:")
         for i, elem in enumerate(snapshot[:10]):
-            logging.info("要素 #%d: ref_id=%s, role=%s, name=%s", 
-                       i+1, elem.get('ref_id'), elem.get('role'), elem.get('name'))
-        
+            logging.info(
+                "要素 #%d: ref_id=%s, role=%s, name=%s",
+                i + 1,
+                elem.get("ref_id"),
+                elem.get("role"),
+                elem.get("name"),
+            )
+
         print(json.dumps(snapshot, ensure_ascii=False, indent=2))
         return 0
     except (RuntimeError, IOError) as e:

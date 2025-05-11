@@ -13,8 +13,8 @@ from typing import Any
 
 import boto3
 
-from .utils import add_debug_log, log_json_debug
 from .exceptions import BedrockAPIError
+from .utils import add_debug_log, log_json_debug
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,7 @@ def create_bedrock_client(credentials: dict[str, str]) -> Any:
     )
 
     return bedrock_runtime
+
 
 __all__: list[str] = [
     "get_inference_config",

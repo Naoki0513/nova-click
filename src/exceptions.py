@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+
 class BrowserAgentError(Exception):
     """ライブラリ全体の基底例外。"""
 
@@ -18,4 +19,4 @@ class BedrockAPIError(BrowserAgentError):
 
 
 class BrowserWorkerError(BrowserAgentError):
-    """ブラウザワーカースレッド関連の例外。""" 
+    """ブラウザワーカースレッド関連の例外。"""

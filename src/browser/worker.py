@@ -10,16 +10,9 @@
 
 from __future__ import annotations
 
-from .actions import (  # re-export
-    click_element,
-    cleanup_browser,
-    get_aria_snapshot,
-    get_current_url,
-    goto_url,
-    initialize_browser,
-    input_text,
-    save_cookies,
-)
+from .actions import click_element  # re-export
+from .actions import (cleanup_browser, get_aria_snapshot, get_current_url,
+                      goto_url, initialize_browser, input_text, save_cookies)
 
 __all__: list[str] = [
     "initialize_browser",
@@ -30,4 +23,4 @@ __all__: list[str] = [
     "get_current_url",
     "save_cookies",
     "cleanup_browser",
-] 
+]

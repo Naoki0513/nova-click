@@ -38,7 +38,7 @@ ALLOWED_ROLES = [
 DEFAULT_INITIAL_URL = "https://www.google.com/"
 
 # Playwright 操作のデフォルトタイムアウト (ミリ秒)
-DEFAULT_TIMEOUT_MS = 5000
+DEFAULT_TIMEOUT_MS = 3000
 
 # ---------------------------------------------------------------------------
 # 実行ラッパー

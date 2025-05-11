@@ -14,7 +14,9 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
+
+import main as constants  # タイムアウト定数のインポート
 
 # ルート utils からデバッグログを再利用
 from ..utils import add_debug_log
@@ -32,6 +34,7 @@ is_headless: bool = os.environ.get("HEADLESS", "false").lower() == "true"
 # ---------------------------------------------------------------------------
 if sys.platform == "win32":
     import ctypes  # type: ignore  # noqa: WPS433  # Windows API 呼び出しで必要
+
     TKINTER_MODULE = None  # Windows では tkinter を使用しない
 else:
     # UNIX 系(OSX/Linux) でヘッドレスでなければ tkinter を試行ロード
@@ -39,7 +42,9 @@ else:
         try:
             import tkinter as TKINTER_MODULE  # type: ignore
         except ImportError:
-            logger.warning("tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。")
+            logger.warning(
+                "tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。"
+            )
             TKINTER_MODULE = None
     else:
         TKINTER_MODULE = None
@@ -51,6 +56,7 @@ if sys.platform == "win32":
 # ---------------------------------------------------------------------------
 # 画面サイズ取得
 # ---------------------------------------------------------------------------
+
 
 def get_screen_size() -> Tuple[int, int]:  # noqa: D401
     """デバイスの画面解像度を取得して返します。
@@ -73,7 +79,9 @@ def get_screen_size() -> Tuple[int, int]:  # noqa: D401
             height = root.winfo_screenheight()
             root.destroy()
         else:
-            add_debug_log("tkinterが利用できません: デフォルト画面解像度を使用", level="WARNING")
+            add_debug_log(
+                "tkinterが利用できません: デフォルト画面解像度を使用", level="WARNING"
+            )
             return 1920, 1080
 
         add_debug_log(f"取得した画面解像度: {width}x{height}")
@@ -83,14 +91,17 @@ def get_screen_size() -> Tuple[int, int]:  # noqa: D401
         return 1920, 1080
     except Exception as exc:  # pragma: no cover
         if TKINTER_MODULE is not None and isinstance(exc, TKINTER_MODULE.TclError):  # type: ignore[attr-defined]
-            add_debug_log(f"スクリーンサイズ取得エラー (tkinter): {exc}", level="WARNING")
+            add_debug_log(
+                f"スクリーンサイズ取得エラー (tkinter): {exc}", level="WARNING"
+            )
         else:
             add_debug_log(f"スクリーンサイズ取得エラー (不明): {exc}", level="WARNING")
         return 1920, 1080
 
+
 # Playwright 型ヒント用 (ランタイム依存回避)
 if TYPE_CHECKING:  # pragma: no cover
-    from playwright.async_api import Page, Locator
+    from playwright.async_api import Locator, Page
 
 __all__ = [
     "is_headless",
@@ -101,6 +112,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # スクロールユーティリティ
 # ---------------------------------------------------------------------------
+
 
 async def _scroll_strategies(page: "Page", locator: "Locator", attempt: int) -> None:
     """試行回数に応じて異なるスクロール戦略を実行します。
@@ -129,6 +141,7 @@ async def _scroll_strategies(page: "Page", locator: "Locator", attempt: int) -> 
         # スクロール戦略自体が失敗しても握り潰す
         add_debug_log(f"_scroll_strategies: スクロール失敗: {exc}", level="DEBUG")
 
+
 async def ensure_element_visible(
     page: "Page", locator: "Locator", max_attempts: int = 3
 ) -> None:  # noqa: D401
@@ -150,15 +163,17 @@ async def ensure_element_visible(
     for attempt in range(max_attempts):
         try:
             # 要素が既にビューポート内か判定 (bounding_box が取得できればOK)
-            box = await locator.bounding_box()
+            box = await locator.bounding_box(timeout=constants.DEFAULT_TIMEOUT_MS)
             if box is not None:
                 vp_info = await page.evaluate(
                     "() => ({width: window.innerWidth, height: window.innerHeight})"
                 )
-                if (
+                # 以下の条件が全て満たされていれば要素はビューポート内にある
+                is_in_viewport = (
                     0 <= box["y"] <= vp_info["height"] - box["height"]
                     and 0 <= box["x"] <= vp_info["width"] - box["width"]
-                ):
+                )
+                if is_in_viewport:
                     return  # ビューポート内
         except Exception:
             # bounding_box が取得出来ない場合はスクロールを試みる
@@ -174,4 +189,4 @@ async def ensure_element_visible(
     add_debug_log(
         "ensure_element_visible: 要素をビューポート内に表示できませんでした",
         level="DEBUG",
-    ) 
+    )
