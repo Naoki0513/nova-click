@@ -9,7 +9,7 @@
 # ---------------------------------------------------------------------------
 
 DEFAULT_QUERY = (
-    "google mapにアクセスし、目黒駅から溜池山王駅までの道のりを教えてください"
+    "Amazonにアクセスし、イヤホンをカートに入れてください。"
 )
 DEFAULT_MODEL_ID = "us.amazon.nova-pro-v1:0"
 DEFAULT_CREDENTIALS_PATH = "credentials/aws_credentials.json"
