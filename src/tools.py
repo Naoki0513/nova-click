@@ -1,7 +1,7 @@
 """
-Bedrock API向けのツール定義とディスパッチモジュール
+Tool definitions and dispatch module for Bedrock API
 
-LLMが利用可能なツールの定義と、ツール呼び出しをブラウザ操作関数に転送するディスパッチロジックを提供します。
+Provides tool definitions for LLM and dispatch logic to forward tool calls to browser operation functions.
 """
 
 import logging
@@ -15,21 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 def get_browser_tools_config() -> list[dict[str, Any]]:
-    """利用可能なブラウザ操作ツールの設定を取得します"""
+    """Get available browser operation tools configuration"""
     return [
         {
             "toolSpec": {
                 "name": "click_element",
-                "description": "ARIA Snapshotから要素の ref_id (数値) を特定してから使用してください。"
-                "指定された参照IDを持つ要素をクリックします。"
-                "実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "First identify the element's ref_id (number) from the ARIA Snapshot, then use this tool. "
+                "Clicks the element with the specified reference ID. "
+                "The latest ARIA Snapshot is automatically included in the result (for both success and failure).",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
                             "ref_id": {
                                 "type": "integer",
-                                "description": "クリックする要素の参照ID（数値、ARIA Snapshotで確認）",
+                                "description": "Reference ID of the element to click (number, check in ARIA Snapshot)",
                             }
                         },
                         "required": ["ref_id"],
@@ -40,20 +40,20 @@ def get_browser_tools_config() -> list[dict[str, Any]]:
         {
             "toolSpec": {
                 "name": "input_text",
-                "description": "ARIA Snapshotから要素の ref_id (数値) を特定してから使用してください。"
-                "指定された参照IDを持つ要素にテキストを入力し、Enterキーを押します。"
-                "実行後の最新のARIA Snapshotが自動的に結果に含まれます（成功時も失敗時も）。",
+                "description": "First identify the element's ref_id (number) from the ARIA Snapshot, then use this tool. "
+                "Inputs text into the element with the specified reference ID and presses Enter. "
+                "The latest ARIA Snapshot is automatically included in the result (for both success and failure).",
                 "inputSchema": {
                     "json": {
                         "type": "object",
                         "properties": {
                             "text": {
                                 "type": "string",
-                                "description": "入力するテキスト",
+                                "description": "Text to input",
                             },
                             "ref_id": {
                                 "type": "integer",
-                                "description": "テキストを入力する要素の参照ID（数値、ARIA Snapshotで確認）",
+                                "description": "Reference ID of the element to input text (number, check in ARIA Snapshot)",
                             },
                         },
                         "required": ["text", "ref_id"],
@@ -65,21 +65,21 @@ def get_browser_tools_config() -> list[dict[str, Any]]:
 
 
 def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[str, Any]:
-    """LLMから呼び出されたツールを実行します
+    """Execute tool called by LLM
 
     Args:
-        tool_name: ツール名 ("click_element" または "input_text")
-        params: ツールのパラメータ (ref_id, textなど)
+        tool_name: Tool name ("click_element" or "input_text")
+        params: Tool parameters (ref_id, text, etc.)
 
     Returns:
-        ツール実行結果を含む辞書 (status, message, aria_snapshot)
+        Dictionary with tool execution result (status, message, aria_snapshot)
     """
     add_debug_log(f"tools.dispatch_browser_tool: tool={tool_name}, params={params}")
     result = None
 
     if tool_name == "click_element":
         if params is None or "ref_id" not in params:
-            error_msg = "パラメータ ref_id が指定されていません"
+            error_msg = "Parameter ref_id is not specified"
             log_operation_error(tool_name, error_msg, params)
             result = {
                 "status": "error",
@@ -89,7 +89,7 @@ def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[st
             result = browser_click_element(params.get("ref_id"))
     elif tool_name == "input_text":
         if params is None or "ref_id" not in params or "text" not in params:
-            error_msg = "パラメータ text または ref_id が指定されていません"
+            error_msg = "Parameter text or ref_id is not specified"
             log_operation_error(tool_name, error_msg, params)
             result = {
                 "status": "error",
@@ -98,7 +98,7 @@ def dispatch_browser_tool(tool_name: str, params: dict | None = None) -> dict[st
         else:
             result = browser_input_text(params.get("text"), params.get("ref_id"))
     else:
-        error_msg = f"不明なツール: {tool_name}"
+        error_msg = f"Unknown tool: {tool_name}"
         add_debug_log(f"tools.dispatch_browser_tool: {error_msg}")
         log_operation_error("unknown_tool", error_msg, params)
         result = {"status": "error", "message": error_msg}

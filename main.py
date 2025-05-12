@@ -1,31 +1,31 @@
 """
-ブラウザ操作エージェント - エントリポイント兼設定ファイル
+Browser Automation Agent - Entry point and configuration file
 
-ユーザーは以下の定数を書き換えるだけでモデルやプロンプトなどの
-設定を変更できます。
+Users can change settings such as model and prompt
+by modifying the constants below.
 """
 # ---------------------------------------------------------------------------
-# main.py 実行用デフォルト値
+# Default values for main.py execution
 # ---------------------------------------------------------------------------
 
 DEFAULT_QUERY = (
-    "Amazonにアクセスし、イヤホンをカートに入れてください。"
+    "Search for the most popular waterproof Bluetooth speaker under $50 on Amazon and add it to the cart."
 )
 DEFAULT_MODEL_ID = "us.amazon.nova-pro-v1:0"
 DEFAULT_CREDENTIALS_PATH = "credentials/aws_credentials.json"
 DEFAULT_MAX_TURNS = 20
 
 # ---------------------------------------------------------------------------
-# ユーザー設定用定数（必要に応じて変更してください）
+# User configurable constants (modify as needed)
 # ---------------------------------------------------------------------------
 
-# ログレベル設定 ("DEBUG", "INFO", "WARNING", "ERROR")
+# Log level setting ("DEBUG", "INFO", "WARNING", "ERROR")
 LOG_LEVEL = "INFO"
 
-# Cookie 保存先
+# Cookie storage location
 COOKIE_FILE = "browser_cookies.json"
 
-# ARIA Snapshot で認識対象とするロール
+# Roles to recognize in ARIA Snapshot
 ALLOWED_ROLES = [
     "button",
     "link",
@@ -34,21 +34,21 @@ ALLOWED_ROLES = [
     "combobox",
 ]
 
-# ブラウザの初期ページURL
+# Initial browser page URL
 DEFAULT_INITIAL_URL = "https://www.google.com/"
 
-# Playwright 操作のデフォルトタイムアウト (ミリ秒)
+# Default timeout for Playwright operations (milliseconds)
 DEFAULT_TIMEOUT_MS = 3000
 
 # ---------------------------------------------------------------------------
-# 実行ラッパー
+# Execution wrapper
 # ---------------------------------------------------------------------------
 import sys
 
 
 def main() -> int:  # noqa: D401
-    """会話エージェントを実行するラッパー関数"""
-    # 循環参照を避けるために動的 import を行う
+    """Execute the conversation agent wrapper function"""
+    # Use dynamic import to avoid circular references
     from src.message import run_cli_mode
 
     return run_cli_mode()

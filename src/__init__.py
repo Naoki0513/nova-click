@@ -1,3 +1,3 @@
 """
-ブラウザ操作エージェントパッケージ
+Browser Automation Agent Package
 """

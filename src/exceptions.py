@@ -1,22 +1,22 @@
 """exceptions
 
-ブラウザ操作エージェントで使用する共通例外クラス群。
+Common exception classes used in the browser automation agent.
 
-共通の基底例外 ``BrowserAgentError`` を定義し、
-機能領域ごとにサブクラスを用意することで
-例外ハンドリングの一貫性を保ちます。
+Defines a common base exception `BrowserAgentError` and
+subclasses for specific functional areas to maintain
+consistency in exception handling.
 """
 
 from __future__ import annotations
 
 
 class BrowserAgentError(Exception):
-    """ライブラリ全体の基底例外。"""
+    """Base exception for the entire library."""
 
 
 class BedrockAPIError(BrowserAgentError):
-    """Bedrock API 呼び出しに関する例外。"""
+    """Exception related to Bedrock API calls."""
 
 
 class BrowserWorkerError(BrowserAgentError):
-    """ブラウザワーカースレッド関連の例外。"""
+    """Exception related to browser worker thread."""

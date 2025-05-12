@@ -1,13 +1,13 @@
 """browser.utils
 
-ブラウザ操作に関連するユーティリティ関数を集約したモジュールです。
+Browser operation related utility functions module.
 
-主な責務:
-1. ヘッドレスモード判定 (環境変数 ``HEADLESS``)
-2. 画面解像度取得 (`get_screen_size`)
+Main responsibilities:
+1. Headless mode determination (environment variable ``HEADLESS``)
+2. Screen resolution retrieval (`get_screen_size`)
 
-``is_headless`` は他モジュールからインポートされる定数のため
-モジュールロード時に決定します。
+``is_headless`` is a constant imported by other modules and
+is determined when the module is loaded.
 """
 
 import asyncio
@@ -16,56 +16,56 @@ import os
 import sys
 from typing import TYPE_CHECKING, Tuple
 
-import main as constants  # タイムアウト定数のインポート
+import main as constants  # Import timeout constants
 
-# ルート utils からデバッグログを再利用
+# Reuse debug log from root utils
 from ..utils import add_debug_log
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# ヘッドレス判定
+# Headless mode determination
 # ---------------------------------------------------------------------------
 
 is_headless: bool = os.environ.get("HEADLESS", "false").lower() == "true"
 
 # ---------------------------------------------------------------------------
-# tkinter などの GUI 関連ライブラリの事前読み込み
+# Pre-loading GUI-related libraries
 # ---------------------------------------------------------------------------
 if sys.platform == "win32":
-    import ctypes  # type: ignore  # noqa: WPS433  # Windows API 呼び出しで必要
+    import ctypes  # type: ignore  # noqa: WPS433  # Required for Windows API calls
 
-    TKINTER_MODULE = None  # Windows では tkinter を使用しない
+    TKINTER_MODULE = None  # Don't use tkinter on Windows
 else:
-    # UNIX 系(OSX/Linux) でヘッドレスでなければ tkinter を試行ロード
+    # Try to load tkinter on UNIX-based systems (OSX/Linux) if not headless
     if not is_headless:
         try:
             import tkinter as TKINTER_MODULE  # type: ignore
         except ImportError:
             logger.warning(
-                "tkinterをインポートできませんでした。デフォルトの画面サイズを使用します。"
+                "Could not import tkinter. Using default screen size."
             )
             TKINTER_MODULE = None
     else:
         TKINTER_MODULE = None
 
-# Windows プラットフォームで asyncio のイベントループポリシーを調整
+# Adjust asyncio event loop policy on Windows platform
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # ---------------------------------------------------------------------------
-# 画面サイズ取得
+# Screen size retrieval
 # ---------------------------------------------------------------------------
 
 
 def get_screen_size() -> Tuple[int, int]:  # noqa: D401
-    """デバイスの画面解像度を取得して返します。
+    """Get device screen resolution.
 
-    ヘッドレスモードの場合は ``1920x1080`` を返します。
+    Returns 1920x1080 in headless mode.
     """
 
     if is_headless:
-        add_debug_log("ヘッドレスモード: デフォルト画面解像度 1920x1080 を使用")
+        add_debug_log("Headless mode: Using default screen resolution 1920x1080")
         return 1920, 1080
 
     try:
@@ -80,26 +80,26 @@ def get_screen_size() -> Tuple[int, int]:  # noqa: D401
             root.destroy()
         else:
             add_debug_log(
-                "tkinterが利用できません: デフォルト画面解像度を使用", level="WARNING"
+                "tkinter not available: Using default screen resolution", level="WARNING"
             )
             return 1920, 1080
 
-        add_debug_log(f"取得した画面解像度: {width}x{height}")
+        add_debug_log(f"Detected screen resolution: {width}x{height}")
         return int(width), int(height)
     except (NameError, AttributeError) as exc:
-        add_debug_log(f"スクリーンサイズ取得エラー: {exc}", level="WARNING")
+        add_debug_log(f"Screen size retrieval error: {exc}", level="WARNING")
         return 1920, 1080
     except Exception as exc:  # pragma: no cover
         if TKINTER_MODULE is not None and isinstance(exc, TKINTER_MODULE.TclError):  # type: ignore[attr-defined]
             add_debug_log(
-                f"スクリーンサイズ取得エラー (tkinter): {exc}", level="WARNING"
+                f"Screen size retrieval error (tkinter): {exc}", level="WARNING"
             )
         else:
-            add_debug_log(f"スクリーンサイズ取得エラー (不明): {exc}", level="WARNING")
+            add_debug_log(f"Screen size retrieval error (unknown): {exc}", level="WARNING")
         return 1920, 1080
 
 
-# Playwright 型ヒント用 (ランタイム依存回避)
+# Playwright type hints (avoid runtime dependency)
 if TYPE_CHECKING:  # pragma: no cover
     from playwright.async_api import Locator, Page
 
@@ -110,83 +110,83 @@ __all__ = [
 ]
 
 # ---------------------------------------------------------------------------
-# スクロールユーティリティ
+# Scroll utilities
 # ---------------------------------------------------------------------------
 
 
 async def _scroll_strategies(page: "Page", locator: "Locator", attempt: int) -> None:
-    """試行回数に応じて異なるスクロール戦略を実行します。
+    """Execute different scroll strategies based on attempt number.
 
-    0回目 : ``scrollIntoView`` で要素を中央へ
-    1回目 : ページトップへ移動 (上方向のナビゲーションメニューなどに対応)
-    2回目 : ページボトムへ移動 (フッターなどに対応)
-    それ以降: 何もしない
+    Attempt 0: Center element with `scrollIntoView`
+    Attempt 1: Scroll to page top (for navigation menus at the top)
+    Attempt 2: Scroll to page bottom (for footers)
+    Further attempts: Do nothing
     """
 
     try:
         if attempt == 0:
-            # 要素自身を中央にスクロール
+            # Center the element itself
             await locator.evaluate(
                 "el => el.scrollIntoView({block: 'center', inline: 'center'})"
             )
         elif attempt == 1:
-            # ページトップへ
+            # Scroll to page top
             await page.evaluate("() => window.scrollTo({top: 0, behavior: 'auto'})")
         elif attempt == 2:
-            # ページボトムへ
+            # Scroll to page bottom
             await page.evaluate(
                 "() => window.scrollTo({top: document.body.scrollHeight, behavior: 'auto'})"
             )
     except Exception as exc:  # pragma: no cover
-        # スクロール戦略自体が失敗しても握り潰す
-        add_debug_log(f"_scroll_strategies: スクロール失敗: {exc}", level="DEBUG")
+        # Swallow exceptions in scroll strategies
+        add_debug_log(f"_scroll_strategies: Scroll failed: {exc}", level="DEBUG")
 
 
 async def ensure_element_visible(
     page: "Page", locator: "Locator", max_attempts: int = 3
 ) -> None:  # noqa: D401
-    """要素がビューポート内に入るよう自動スクロールを試みます。
+    """Attempt to automatically scroll to ensure element is in viewport.
 
-    Playwright は要素操作時に自動スクロールしますが、ナビゲーションバーの
-    ように *ページトップまでスクロールしなければ* DOM上に現れない要素や、
-    sticky ヘッダーの背後に隠れてしまう要素が存在します。
+    While Playwright automatically scrolls when operating on elements, some elements
+    like those in navigation bars that only appear when scrolling to the top of the
+    page, or elements hidden behind sticky headers, may require special handling.
 
-    そこで以下の手順で最大 ``max_attempts`` 回までスクロールを試行します。
+    This tries the following strategies up to `max_attempts` times:
 
-    1. ``scrollIntoView`` を使用して中央へ移動
-    2. ページトップへスクロール
-    3. ページボトムへスクロール
+    1. Use `scrollIntoView` to center the element
+    2. Scroll to page top
+    3. Scroll to page bottom
 
-    それでも要素がビューポート外の場合は呼び出し元で例外処理してください。
+    If the element is still outside the viewport, the caller should handle the exception.
     """
 
     for attempt in range(max_attempts):
         try:
-            # 要素が既にビューポート内か判定 (bounding_box が取得できればOK)
+            # Check if element is already in viewport (can get bounding_box)
             box = await locator.bounding_box(timeout=constants.DEFAULT_TIMEOUT_MS)
             if box is not None:
                 vp_info = await page.evaluate(
                     "() => ({width: window.innerWidth, height: window.innerHeight})"
                 )
-                # 以下の条件が全て満たされていれば要素はビューポート内にある
+                # If all conditions are met, the element is in the viewport
                 is_in_viewport = (
                     0 <= box["y"] <= vp_info["height"] - box["height"]
                     and 0 <= box["x"] <= vp_info["width"] - box["width"]
                 )
                 if is_in_viewport:
-                    return  # ビューポート内
+                    return  # Element is in viewport
         except Exception:
-            # bounding_box が取得出来ない場合はスクロールを試みる
+            # If can't get bounding_box, try scrolling
             pass
 
-        # スクロール戦略を実行
+        # Execute scroll strategy
         await _scroll_strategies(page, locator, attempt)
 
-        # スクロール直後は描画が落ち着くまで僅かに待機
+        # Wait briefly after scrolling for rendering to settle
         await asyncio.sleep(0.1)
 
-    # ここまで到達した場合は要素をビューポート内に収められなかった
+    # If reached here, couldn't fit element in viewport
     add_debug_log(
-        "ensure_element_visible: 要素をビューポート内に表示できませんでした",
+        "ensure_element_visible: Could not bring element into viewport",
         level="DEBUG",
     )

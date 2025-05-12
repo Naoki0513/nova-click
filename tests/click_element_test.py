@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""click_elementテストスクリプト
+"""Click Element Test Script
 
-指定されたURLを開き、ARIA Snapshotを取得して
-ref_id で指定した要素をクリックするテストを行います。
+Opens the specified URL, retrieves the ARIA Snapshot, and
+performs tests for clicking an element specified by ref_id.
 
-正常系と異常系（存在しない要素へのクリックなど）のテストが含まれます。
+Includes tests for both normal case and error case (e.g., clicking non-existent elements).
 
-環境変数:
-    HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
+Environment variables:
+    HEADLESS - If 'true', runs the browser in headless mode
 """
 import logging
 import os
@@ -15,7 +15,7 @@ import sys
 import time
 import traceback
 
-# プロジェクトルートをPythonパスに追加
+# Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.browser import (cleanup_browser, click_element, get_aria_snapshot,
@@ -23,212 +23,207 @@ from src.browser import (cleanup_browser, click_element, get_aria_snapshot,
 from src.utils import setup_logging
 
 
-# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
+# Test parameters (modify these to change test conditions)
 TEST_URL = "https://www.google.co.jp/"
 TEST_REF_ID = 26
-# 異常系テスト用
+# For error case testing
 TEST_ERROR_REF_ID = 9999
 
 
 def test_normal_case(url=TEST_URL, ref_id=TEST_REF_ID):
-    """正常系テスト - 指定された要素をクリックする"""
-    logging.info("=== 正常系テスト開始: url=%s, ref_id=%s ===", url, ref_id)
+    """Normal case test - Click the specified element"""
+    logging.info("=== Normal case test start: url=%s, ref_id=%s ===", url, ref_id)
 
     init_res = initialize_browser()
     if init_res.get("status") != "success":
-        logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
-        assert False, "ブラウザ初期化に失敗"
+        logging.error("Browser initialization failed: %s", init_res.get("message"))
+        assert False, "Browser initialization failed"
 
     goto_res = goto_url(url)
     if goto_res.get("status") != "success":
-        logging.error("URL移動に失敗: %s", goto_res.get("message"))
-        assert False, "URL移動に失敗"
-    logging.info("ページ読み込み完了")
+        logging.error("URL navigation failed: %s", goto_res.get("message"))
+        assert False, "URL navigation failed"
+    logging.info("Page loading complete")
 
-    # クリック前のARIA Snapshot取得
+    # Get ARIA Snapshot before clicking
     aria_before_res = get_aria_snapshot()
     if aria_before_res.get("status") != "success":
         logging.error(
-            "クリック前のARIA Snapshot取得に失敗: %s", aria_before_res.get("message")
+            "Failed to get ARIA Snapshot before click: %s", aria_before_res.get("message")
         )
-        assert False, "ARIA Snapshot取得に失敗"
+        assert False, "ARIA Snapshot retrieval failed"
 
     elements_before = aria_before_res.get("aria_snapshot", [])
-    logging.info("クリック前の要素数: %s", len(elements_before))
+    logging.info("Number of elements before click: %s", len(elements_before))
 
     element_exists = any(e.get("ref_id") == ref_id for e in elements_before)
     if not element_exists:
         logging.error(
-            "指定されたref_id=%s の要素が見つかりません。クリック可能な要素を探します。",
+            "Element with ref_id=%s not found. Looking for clickable elements.",
             ref_id,
         )
 
-        # 要素が見つからない場合は、クリック可能な要素を探す
+        # If element not found, look for clickable elements
         clickable_elements = []
         for elem in elements_before:
             if elem.get("role") in ["button", "link"]:
                 clickable_elements.append(elem)
                 logging.info(
-                    "クリック可能な要素を見つけました: ref_id=%s, role=%s, name=%s",
+                    "Found clickable element: ref_id=%s, role=%s, name=%s",
                     elem.get("ref_id"),
                     elem.get("role"),
                     elem.get("name"),
                 )
 
         if clickable_elements:
-            # 1番目のクリック可能な要素を使用
+            # Use the first clickable element
             ref_id = clickable_elements[0].get("ref_id")
-            logging.info("テスト継続のため ref_id=%s に変更します", ref_id)
+            logging.info("Changing to ref_id=%s to continue test", ref_id)
         else:
-            # クリック可能な要素がない場合は、最初の要素を使用
+            # If no clickable elements, use the first element
             if elements_before:
                 ref_id = elements_before[0].get("ref_id")
                 logging.info(
-                    "テスト継続のため、最初の要素 ref_id=%s を使用します", ref_id
+                    "Using first element ref_id=%s to continue test", ref_id
                 )
             else:
-                assert False, "クリック可能な要素が見つかりません"
+                assert False, "No clickable elements found"
 
-    # 選択した要素の情報をログ
+    # Log info about selected element
     target_element = next(
         (e for e in elements_before if e.get("ref_id") == ref_id), None
     )
     if target_element:
         logging.info(
-            "クリック対象要素: ref_id=%s, role=%s, name=%s",
+            "Target element for click: ref_id=%s, role=%s, name=%s",
             target_element.get("ref_id"),
             target_element.get("role"),
             target_element.get("name"),
         )
 
-    # クリック実行
-    logging.info("クリック処理開始: ref_id=%s", ref_id)
+    # Execute click
+    logging.info("Starting click operation: ref_id=%s", ref_id)
     click_res = click_element(ref_id)
     if click_res.get("status") != "success":
-        logging.error("クリックに失敗しました: %s", click_res.get("message"))
-        assert False, "クリックに失敗しました"
+        logging.error("Click failed: %s", click_res.get("message"))
+        assert False, "Click failed"
 
-    logging.info("クリック処理成功")
+    logging.info("Click operation successful")
 
-    # 操作後の検証: ページの変化を待機
+    # Verification after operation: Wait for page changes
     time.sleep(1)
 
-    # クリック後のARIA Snapshot取得して検証
+    # Get ARIA Snapshot after click and verify
     aria_after_res = get_aria_snapshot()
     if aria_after_res.get("status") != "success":
         logging.error(
-            "クリック後のARIA Snapshot取得に失敗: %s", aria_after_res.get("message")
+            "Failed to get ARIA Snapshot after click: %s", aria_after_res.get("message")
         )
-        assert False, "クリック後のARIA Snapshot取得に失敗"
+        assert False, "Failed to get ARIA Snapshot after click"
 
     elements_after = aria_after_res.get("aria_snapshot", [])
-    logging.info("クリック後の要素数: %s", len(elements_after))
+    logging.info("Number of elements after click: %s", len(elements_after))
 
-    # DOM変化の検証
+    # Verify DOM changes
     has_change = False
 
-    # 1. 要素数の変化を検証
+    # 1. Check for element count changes
     if len(elements_before) != len(elements_after):
         has_change = True
         logging.info(
-            "要素数の変化を検出: 前=%d, 後=%d",
+            "Element count change detected: before=%d, after=%d",
             len(elements_before),
             len(elements_after),
         )
 
-    # 2. リンク要素の場合はURLの変化を検証
+    # 2. Check for URL change if element was a link
     if target_element and target_element.get("role") == "link":
-        current_url_res = goto_url("")  # 現在のURLを取得
+        current_url_res = goto_url("")  # Get current URL
         if (
             current_url_res.get("status") == "success"
             and current_url_res.get("current_url") != url
         ):
             has_change = True
             logging.info(
-                "URLの変化を検出: %s → %s", url, current_url_res.get("current_url")
+                "URL change detected: %s → %s", url, current_url_res.get("current_url")
             )
 
-    # 検証結果
+    # Verification result
     if has_change:
-        logging.info("クリック操作による変化を確認しました")
+        logging.info("Changes confirmed after click operation")
     else:
         logging.warning(
-            "クリック操作後の変化が検出できませんでした。実際の操作は成功している可能性があります。"
+            "No changes detected after click operation. The operation might still have been successful."
         )
 
     assert True
 
 
 def test_error_case(url=TEST_URL, ref_id=TEST_ERROR_REF_ID):
-    """異常系テスト - 存在しない要素をクリックする"""
-    logging.info("=== 異常系テスト開始: url=%s, 存在しないref_id=%s ===", url, ref_id)
+    """Error case test - Click a non-existent element"""
+    logging.info("=== Error case test start: url=%s, non-existent ref_id=%s ===", url, ref_id)
 
     init_res = initialize_browser()
     if init_res.get("status") != "success":
-        logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
-        assert False, "ブラウザ初期化に失敗"
+        logging.error("Browser initialization failed: %s", init_res.get("message"))
+        assert False, "Browser initialization failed"
 
     goto_res = goto_url(url)
     if goto_res.get("status") != "success":
-        logging.error("URL移動に失敗: %s", goto_res.get("message"))
-        assert False, "URL移動に失敗"
-    logging.info("ページ読み込み完了")
+        logging.error("URL navigation failed: %s", goto_res.get("message"))
+        assert False, "URL navigation failed"
+    logging.info("Page loading complete")
 
-    # クリック前のARIA Snapshot取得
+    # Get ARIA Snapshot before clicking
     aria_before_res = get_aria_snapshot()
     if aria_before_res.get("status") != "success":
         logging.error(
-            "クリック前のARIA Snapshot取得に失敗: %s", aria_before_res.get("message")
+            "Failed to get ARIA Snapshot before click: %s", aria_before_res.get("message")
         )
-        assert False, "ARIA Snapshot取得に失敗"
+        assert False, "ARIA Snapshot retrieval failed"
 
     elements_before = aria_before_res.get("aria_snapshot", [])
 
-    logging.info("存在しない要素のクリック処理開始: ref_id=%s", ref_id)
+    logging.info("Starting click operation on non-existent element: ref_id=%s", ref_id)
     click_res = click_element(ref_id)
 
     if click_res.get("status") == "error":
-        logging.info("想定通りエラーが返されました: %s", click_res.get("message"))
+        logging.info("Error returned as expected: %s", click_res.get("message"))
 
-        # 操作後の検証: DOMが変化していないことを確認
+        # Verification after operation: Confirm DOM did not change
         aria_after_res = get_aria_snapshot()
-        if aria_after_res.get("status") != "success":
-            logging.error(
-                "クリック後のARIA Snapshot取得に失敗: %s", aria_after_res.get("message")
-            )
-            assert False, "クリック後のARIA Snapshot取得に失敗"
+        if aria_after_res.get("status") == "success":
+            elements_after = aria_after_res.get("aria_snapshot", [])
 
-        elements_after = aria_after_res.get("aria_snapshot", [])
-
-        # 要素数が変わっていないことを確認
-        if len(elements_before) == len(elements_after):
-            logging.info(
-                "エラー後も要素数に変化がないことを確認: %d", len(elements_after)
-            )
-        else:
-            logging.warning(
-                "エラー後に要素数が変化しています: 前=%d, 後=%d",
-                len(elements_before),
-                len(elements_after),
-            )
+            # Verify element count has not changed
+            if len(elements_before) == len(elements_after):
+                logging.info(
+                    "Confirmed no element count change after error: %d", len(elements_after)
+                )
+            else:
+                logging.warning(
+                    "Element count changed despite error: before=%d, after=%d",
+                    len(elements_before),
+                    len(elements_after),
+                )
 
         assert True
     else:
-        logging.error("存在しない要素へのクリックがエラーを返しませんでした")
-        assert False, "存在しない要素へのクリックがエラーを返しませんでした"
+        logging.error("Click on non-existent element did not return an error")
+        assert False, "Click on non-existent element did not return an error"
 
 
 def main():
-    """メイン関数 - テストの実行と結果の処理を行う"""
-    # テスト設定を適用
+    """Main function - Controls test execution and processes results"""
+    # Apply test settings
     url = TEST_URL
     ref_id = TEST_REF_ID
 
     setup_logging()
-    # ログレベルを常にDEBUGに設定
+    # Always set log level to DEBUG
     logging.getLogger().setLevel(logging.DEBUG)
 
-    # テストパラメータを出力
+    # Output test parameters
     logging.info(
         "Test parameters: url=%s, ref_id=%s, headless=%s",
         url,
@@ -237,7 +232,7 @@ def main():
     )
 
     try:
-        # テスト関数は値を返さないため、例外をキャッチして成功/失敗を判断
+        # Test functions don't return values, so catch exceptions to determine success/failure
         normal_success = False
         error_success = False
 
@@ -245,31 +240,31 @@ def main():
             test_normal_case(url, ref_id)
             normal_success = True
         except AssertionError as e:
-            logging.error("正常系テスト失敗: %s", e)
+            logging.error("Normal case test failed: %s", e)
 
         try:
             test_error_case(url, TEST_ERROR_REF_ID)
             error_success = True
         except AssertionError as e:
-            logging.error("異常系テスト失敗: %s", e)
+            logging.error("Error case test failed: %s", e)
 
         if normal_success and error_success:
-            logging.info("すべてのテストが成功しました")
+            logging.info("All tests passed successfully")
             return 0
         else:
-            logging.error("一部のテストが失敗しました")
+            logging.error("Some tests failed")
             return 1
     except Exception as e:
-        logging.error("テスト実行中にエラーが発生しました: %s", e)
+        logging.error("Error during test execution: %s", e)
         traceback.print_exc()
         return 1
     finally:
-        # 必ずブラウザをクリーンアップ
+        # Always clean up the browser
         try:
             cleanup_browser()
-            logging.info("ブラウザのクリーンアップが完了しました")
+            logging.info("Browser cleanup completed")
         except Exception as e:
-            logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
+            logging.error("Error during browser cleanup: %s", e)
 
 
 if __name__ == "__main__":

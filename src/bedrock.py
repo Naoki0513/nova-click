@@ -1,11 +1,11 @@
 """
-Amazon Bedrock API 連携モジュール
+Amazon Bedrock API Integration Module
 
-Bedrock API を使用して、LLMに基づくブラウザ操作エージェントを実現します。
-以下の機能を提供します：
-- API通信設定
-- 推論パラメータの管理
-- APIレスポンスの解析
+Implements browser automation agent using Bedrock API with LLM capabilities.
+This module provides:
+- API communication settings
+- Inference parameter management
+- API response analysis
 """
 
 import logging
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_inference_config(model_id: str) -> dict[str, Any]:
-    """モデルごとに最適な推論パラメータを返す"""
+    """Return optimal inference parameters for each model"""
     cfg = {"maxTokens": 3000}
 
     if "amazon.nova" in model_id:
@@ -33,7 +33,7 @@ def get_inference_config(model_id: str) -> dict[str, Any]:
 def update_token_usage(
     response: dict[str, Any], token_usage: dict[str, int]
 ) -> dict[str, int]:
-    """トークン使用量を更新する"""
+    """Update token usage statistics"""
     usage = response.get("usage", {})
     token_usage["inputTokens"] += usage.get("inputTokens", 0)
     token_usage["outputTokens"] += usage.get("outputTokens", 0)
@@ -50,17 +50,17 @@ def call_bedrock_api(
     model_id: str,
     tool_config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Bedrock API を呼び出して、LLMの応答を取得します
+    """Call Bedrock API to get LLM response
 
     Args:
-        bedrock_runtime: Bedrock ランタイムセッション
-        messages: 会話履歴
-        system_prompt: システムプロンプト
-        model_id: 使用するモデルID
-        tool_config: ツール設定
+        bedrock_runtime: Bedrock runtime session
+        messages: Conversation history
+        system_prompt: System prompt
+        model_id: Model ID to use
+        tool_config: Tool configuration
 
     Returns:
-        APIレスポンス
+        API response
     """
     try:
         inference_config = get_inference_config(model_id)
@@ -77,80 +77,80 @@ def call_bedrock_api(
 
         return response
     except Exception as exc:  # noqa: BLE001
-        # boto3 由来の例外をキャッチしてラップする
+        # Catch and wrap boto3 exceptions
         err_msg = str(exc)
-        add_debug_log(f"Bedrock API呼び出しエラー: {err_msg}", level="ERROR")
+        add_debug_log(f"Bedrock API call error: {err_msg}", level="ERROR")
         raise BedrockAPIError(err_msg) from exc
 
 
 def analyze_stop_reason(stop_reason: str) -> dict[str, Any]:
-    """応答停止理由を分析し、適切な処理方法を返します
+    """Analyze response stop reason and return appropriate handling method
 
     Args:
-        stop_reason: APIレスポンスのstopReason値
+        stop_reason: stopReason value from API response
 
     Returns:
-        分析結果と処理方法を含む辞書
+        Dictionary with analysis results and handling instructions
     """
     if stop_reason == "end_turn":
-        add_debug_log("Stop reasonが 'end_turn' のため終了します。")
-        return {"should_continue": False, "error": False, "message": "正常終了"}
+        add_debug_log("Ending because stop reason is 'end_turn'.")
+        return {"should_continue": False, "error": False, "message": "Completed normally"}
 
     if stop_reason == "tool_use":
         add_debug_log(
-            "Stop reasonが 'tool_use' ですが、ツールが見つかりませんでした。予期せぬ状態のため終了します。"
+            "Stop reason is 'tool_use' but no tool was found. Ending due to unexpected state."
         )
         return {
             "should_continue": False,
             "error": True,
-            "message": "LLMがtool_useで停止しましたが、toolUseブロックがありませんでした。",
+            "message": "LLM stopped with tool_use but no toolUse block was found.",
         }
 
     if stop_reason == "max_tokens":
-        add_debug_log("Stop reasonが 'max_tokens' のため終了します。", level="WARNING")
+        add_debug_log("Ending because stop reason is 'max_tokens'.", level="WARNING")
         return {
             "should_continue": False,
             "error": False,
-            "message": "最大トークン数に達したため、応答が途中で打ち切られている可能性があります。",
+            "message": "Maximum token count reached. Response may have been truncated.",
         }
 
-    if stop_reason:  # 他のstop_reason
-        add_debug_log(f"Stop reason '{stop_reason}' のため終了します。")
+    if stop_reason:  # Other stop_reason
+        add_debug_log(f"Ending because stop reason is '{stop_reason}'.")
         return {
             "should_continue": False,
             "error": False,
-            "message": f"停止理由: {stop_reason}",
+            "message": f"Stop reason: {stop_reason}",
         }
 
-    # stop_reason が null や空文字の場合
-    add_debug_log("Stop reasonが不明です。予期せぬ状態のためループを終了します。")
+    # For null or empty stop_reason
+    add_debug_log("Stop reason is unknown. Ending loop due to unexpected state.")
     return {
         "should_continue": False,
         "error": True,
-        "message": "LLMが予期せぬ状態で停止しました（Stop reason不明）。",
+        "message": "LLM stopped in an unexpected state (unknown stop reason).",
     }
 
 
 def extract_tool_calls(message_content: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """メッセージコンテンツからツール呼び出しを抽出します
+    """Extract tool calls from message content
 
     Args:
-        message_content: アシスタントメッセージのコンテンツ
+        message_content: Assistant message content
 
     Returns:
-        ツール呼び出しのリスト
+        List of tool calls
     """
     return [c["toolUse"] for c in message_content if "toolUse" in c]
 
 
 def create_bedrock_client(credentials: dict[str, str]) -> Any:
-    """Bedrock クライアントを作成します
+    """Create Bedrock client
 
     Args:
-        credentials: AWS認証情報
+        credentials: AWS credentials
 
     Returns:
-        Bedrock ランタイムクライアント
+        Bedrock runtime client
     """
     bedrock_runtime = boto3.client(
         service_name="bedrock-runtime",

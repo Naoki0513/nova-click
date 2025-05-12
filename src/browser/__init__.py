@@ -1,11 +1,11 @@
-"""browserパッケージ
+"""browser package
 
-Playwright を利用したブラウザ自動操作機能を提供します。
-このパッケージには以下のモジュールが含まれています：
-- actions: 高レベルブラウザ操作API (click, input など)
-- snapshot: ARIA Snapshot 取得機能
-- utils: ブラウザ関連ユーティリティ
-- worker: ワーカースレッド管理（将来拡張）
+Provides browser automation functionality using Playwright.
+This package includes the following modules:
+- actions: High-level browser operation API (click, input, etc.)
+- snapshot: ARIA Snapshot retrieval functionality
+- utils: Browser-related utilities
+- worker: Worker thread management (future extension)
 """
 
 from .actions import (cleanup_browser, click_element, get_aria_snapshot,

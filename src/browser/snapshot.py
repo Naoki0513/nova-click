@@ -1,9 +1,9 @@
 """browser.snapshot
 
-Playwright の ``page`` オブジェクトを用いて ARIA Snapshot を取得する
-ユーティリティ関数を集めたモジュールです。JavaScript/Evaluate を
-1 箇所に集約することで、ブラウザワーカースレッド以外でも再利用
-しやすくしています。
+A module that contains utility functions for retrieving ARIA Snapshots
+using the Playwright ``page`` object. By centralizing JavaScript/Evaluate
+operations in one place, it makes them easier to reuse outside of the
+browser worker thread.
 """
 
 from __future__ import annotations
@@ -22,10 +22,10 @@ __all__ = [
 _JS_GET_SNAPSHOT = r"""() => {
     const snapshotResult = [];
     let refIdCounter = 1;
-    let errorCount = 0; // エラーカウント用
+    let errorCount = 0; // Error counter
 
     try {
-        // ドキュメント内の対話可能な要素を取得
+        // Get interactive elements in the document
         const interactiveElements = document.querySelectorAll(
             'button, a, input, select, textarea, ' +
             '[role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
@@ -34,7 +34,7 @@ _JS_GET_SNAPSHOT = r"""() => {
 
         interactiveElements.forEach(element => {
             try {
-                // role を決定
+                // Determine role
                 let role = element.getAttribute('role');
                 if (!role) {
                     switch (element.tagName.toLowerCase()) {
@@ -55,7 +55,7 @@ _JS_GET_SNAPSHOT = r"""() => {
                     }
                 }
 
-                // 要素名 (name/label) を取得
+                // Get element name (name/label)
                 let name = '';
                 if (element.hasAttribute('aria-label')) {
                     name = element.getAttribute('aria-label');
@@ -83,11 +83,11 @@ _JS_GET_SNAPSHOT = r"""() => {
                     }
                 }
 
-                // ref-id を付与
+                // Add ref-id
                 const refIdValue = refIdCounter++;
                 element.setAttribute('data-ref-id', `ref-${refIdValue}`);
 
-                // 可視性チェック
+                // Visibility check
                 const rect = element.getBoundingClientRect();
                 const isVisible = rect.width > 0 && rect.height > 0 &&
                                   window.getComputedStyle(element).visibility !== 'hidden' &&
@@ -118,17 +118,17 @@ _JS_GET_SNAPSHOT = r"""() => {
 
 
 async def get_snapshot_with_stats(page: Any) -> Dict[str, Any]:
-    """Playwright ``page`` からスナップショットを取得し統計情報を付与して返します。"""
+    """Retrieves a snapshot from Playwright ``page`` and returns it with statistics."""
 
     add_debug_log(
-        "snapshot.get_snapshot_with_stats: JavaScript でスナップショットを取得"
+        "snapshot.get_snapshot_with_stats: Retrieving snapshot using JavaScript"
     )
     result = await page.evaluate(_JS_GET_SNAPSHOT)
 
-    # 期待する型チェック
+    # Check expected type
     if not isinstance(result, dict):
         add_debug_log(
-            "snapshot.get_snapshot_with_stats: JS から期待しない型が返却されました",
+            "snapshot.get_snapshot_with_stats: Unexpected type returned from JS",
             level="WARNING",
         )
         return {"snapshot": [], "errorCount": 1, "error": "Unexpected return from JS"}
@@ -137,13 +137,13 @@ async def get_snapshot_with_stats(page: Any) -> Dict[str, Any]:
 
 
 async def take_aria_snapshot(page: Any) -> List[Dict[str, Any]]:
-    """``page`` から要素のフラットリスト(スナップショット)のみを取得して返します。"""
+    """Retrieves only a flat list of elements (snapshot) from the ``page``."""
 
     data = await get_snapshot_with_stats(page)
     snapshot_list = data.get("snapshot", [])
 
-    # ALLOWED_ROLES でフィルタリング
+    # Filter by ALLOWED_ROLES
     filtered = [e for e in snapshot_list if e.get("role") in constants.ALLOWED_ROLES]
 
-    add_debug_log(f"snapshot.take_aria_snapshot: {len(filtered)} 要素を取得")
+    add_debug_log(f"snapshot.take_aria_snapshot: Retrieved {len(filtered)} elements")
     return filtered

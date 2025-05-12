@@ -1,11 +1,11 @@
 """browser.worker
 
-将来的にブラウザワーカースレッド管理を専用モジュールへ分離するための
-プレースホルダーです。現段階では ``browser.actions`` から既存 API を
-そのまま再エクスポートして互換性を担保します。
+A placeholder module for future separation of browser worker thread management.
+At the current stage, it re-exports existing APIs from ``browser.actions``
+to maintain compatibility.
 
-このファイルを配置することで、静的解析ツールが ``src.browser.worker``
-を解決できずに発する ImportError を防ぎます。
+This file prevents ImportError that would be raised by static analysis tools
+when they try to resolve ``src.browser.worker``.
 """
 
 from __future__ import annotations

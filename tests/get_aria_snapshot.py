@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""ARIA Snapshot取得用テストスクリプト
+"""ARIA Snapshot Test Script
 
-ブラウザワーカーを起動し、指定(またはデフォルト)のURLに移動してから
-最新のARIA Snapshotを取得してコンソールに出力します。
+Launches the browser worker, navigates to the specified (or default) URL,
+and retrieves the latest ARIA Snapshot, which is output to the console.
 
-環境変数:
-    HEADLESS - 'true'の場合、ブラウザをヘッドレスモードで実行します
+Environment variables:
+    HEADLESS - If 'true', runs the browser in headless mode
 """
 import json
 import logging
@@ -13,7 +13,7 @@ import os
 import sys
 import traceback
 
-# プロジェクトルートをPythonパスに追加
+# Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.browser import (cleanup_browser, get_aria_snapshot, goto_url,
@@ -21,22 +21,22 @@ from src.browser import (cleanup_browser, get_aria_snapshot, goto_url,
 from src.utils import setup_logging
 
 
-# テスト用パラメータ（ここを変更することでテスト条件を設定できます）
+# Test parameters (modify these to change test conditions)
 TEST_URL = "https://www.google.co.jp/maps/"
 
 
 def main():
     """
-    メイン実行関数 - ARIAスナップショットの取得テストを実行します。
+    Main execution function - Runs the ARIA snapshot retrieval test.
     """
-    # 設定を適用
+    # Apply settings
     url = TEST_URL
 
     setup_logging()
-    # ログレベルを常にDEBUGに設定
+    # Always set log level to DEBUG
     logging.getLogger().setLevel(logging.DEBUG)
 
-    # テストパラメータを出力
+    # Output test parameters
     logging.info(
         "Test parameters: url=%s, headless=%s",
         url,
@@ -44,50 +44,50 @@ def main():
     )
 
     try:
-        # ブラウザ起動
+        # Launch browser
         init_res = initialize_browser()
         if init_res.get("status") != "success":
-            logging.error("ブラウザ初期化に失敗: %s", init_res.get("message"))
+            logging.error("Browser initialization failed: %s", init_res.get("message"))
             return 1
 
-        # URLに移動
+        # Navigate to URL
         goto_res = goto_url(url)
         if goto_res.get("status") != "success":
-            logging.error("URL移動に失敗: %s", goto_res.get("message"))
+            logging.error("URL navigation failed: %s", goto_res.get("message"))
             return 1
 
         current_url = goto_res.get("current_url", url)
-        logging.info("ページに移動しました: %s", current_url)
+        logging.info("Navigated to page: %s", current_url)
 
-        # 検証: 正しいURLに移動できたか
+        # Verification: Confirm navigation to correct URL
         if current_url != url and not current_url.startswith(url):
             logging.warning(
-                "移動先URLが指定URLと異なります: 指定=%s, 実際=%s",
+                "Destination URL differs from specified URL: specified=%s, actual=%s",
                 url,
                 current_url,
             )
 
-        # ARIA Snapshot取得
+        # Get ARIA Snapshot
         aria_res = get_aria_snapshot()
         if aria_res.get("status") != "success":
-            logging.error("ARIA Snapshot取得に失敗: %s", aria_res.get("message"))
+            logging.error("ARIA Snapshot retrieval failed: %s", aria_res.get("message"))
             return 1
 
         snapshot = aria_res.get("aria_snapshot", [])
-        logging.info("取得した要素数: %d", len(snapshot))
+        logging.info("Number of elements retrieved: %d", len(snapshot))
 
-        # 検証: スナップショットの基本的な有効性チェック
+        # Verification: Basic validity check of snapshot
         if not snapshot:
-            logging.error("ARIAスナップショットが空です")
+            logging.error("ARIA snapshot is empty")
             return 1
 
-        # スナップショットの基本的な構造を検証
+        # Verify basic structure of snapshot
         valid_structure = all(isinstance(e, dict) for e in snapshot)
         if not valid_structure:
-            logging.error("ARIAスナップショットの構造が無効です")
+            logging.error("ARIA snapshot structure is invalid")
             return 1
 
-        # 基本的な要素の存在確認
+        # Check for existence of basic elements
         key_roles = ["document", "heading", "link"]
         found_roles = {role: False for role in key_roles}
 
@@ -96,22 +96,22 @@ def main():
             if role in key_roles:
                 found_roles[role] = True
                 logging.info(
-                    "基本要素を発見: role=%s, name=%s",
+                    "Basic element found: role=%s, name=%s",
                     role,
-                    element.get("name", "(名前なし)"),
+                    element.get("name", "(No name)"),
                 )
 
         for role, found in found_roles.items():
             if found:
-                logging.info("基本要素 '%s' が存在します", role)
+                logging.info("Basic element '%s' exists", role)
             else:
-                logging.warning("基本要素 '%s' が見つかりません", role)
+                logging.warning("Basic element '%s' not found", role)
 
-        # 結果出力（最初の10要素だけ詳細表示）
-        logging.info("スナップショットの最初の10要素:")
+        # Output results (show details for first 10 elements only)
+        logging.info("First 10 elements of the snapshot:")
         for i, elem in enumerate(snapshot[:10]):
             logging.info(
-                "要素 #%d: ref_id=%s, role=%s, name=%s",
+                "Element #%d: ref_id=%s, role=%s, name=%s",
                 i + 1,
                 elem.get("ref_id"),
                 elem.get("role"),
@@ -121,17 +121,17 @@ def main():
         print(json.dumps(snapshot, ensure_ascii=False, indent=2))
         return 0
     except (RuntimeError, IOError) as e:
-        # より具体的な例外タイプを指定
-        logging.error("テスト実行中にエラーが発生しました: %s", e)
+        # Specify more concrete exception types
+        logging.error("Error during test execution: %s", e)
         traceback.print_exc()
         return 1
     finally:
-        # 必ずブラウザをクリーンアップ
+        # Always clean up the browser
         try:
             cleanup_browser()
-            logging.info("ブラウザのクリーンアップが完了しました")
+            logging.info("Browser cleanup completed")
         except Exception as e:
-            logging.error("ブラウザのクリーンアップ中にエラーが発生しました: %s", e)
+            logging.error("Error during browser cleanup: %s", e)
 
 
 if __name__ == "__main__":

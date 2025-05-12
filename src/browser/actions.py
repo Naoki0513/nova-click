@@ -1,9 +1,8 @@
 """browser.actions
 
-Playwright を利用したブラウザワーカースレッドの起動と、
-高レベル API (click, input など) を提供するモジュール。
-旧 ``browser.py`` からロジックを移行し、``browser.snapshot`` を
-利用して ARIA Snapshot 関連処理を分離しています。
+A module that provides browser worker thread initialization and high-level APIs
+(click, input, etc.) using Playwright. Logic has been migrated from the former
+``browser.py`` and uses ``browser.snapshot`` to separate ARIA Snapshot processing.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from .utils import ensure_element_visible, get_screen_size, is_headless
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# グローバルキュー/スレッド管理
+# Global queue/thread management
 # ---------------------------------------------------------------------------
 
 _cmd_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
@@ -34,54 +33,54 @@ _res_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
 _thread_started: bool = False
 _browser_thread: threading.Thread | None = None
 
-# Playwright の TimeoutError 用フォールバック (インポート失敗時用)
+# Fallback for Playwright's TimeoutError (for import failure)
 try:
     from playwright.async_api import \
         TimeoutError as PlaywrightTimeoutError  # type: ignore
 except ImportError:  # pragma: no cover
 
     class PlaywrightTimeoutError(Exception):
-        """Playwright が無い場合のフォールバックタイムアウト例外"""
+        """Fallback timeout exception for when Playwright is not available"""
 
 
 Page = Any  # 型エイリアス
 
 # ---------------------------------------------------------------------------
-# パブリック API
+# Public API
 # ---------------------------------------------------------------------------
 
 
 def initialize_browser() -> Dict[str, str]:
-    """ブラウザワーカースレッドを初期化して開始します"""
+    """Initializes and starts the browser worker thread"""
 
     global _thread_started, _browser_thread
 
     if _thread_started:
-        add_debug_log("initialize_browser: すでにスレッドが開始されています")
+        add_debug_log("initialize_browser: Thread is already started")
         return {
             "status": "success",
-            "message": "ブラウザワーカーはすでに初期化されています",
+            "message": "Browser worker is already initialized",
         }
 
-    add_debug_log("initialize_browser: ブラウザワーカースレッドを開始")
+    add_debug_log("initialize_browser: Starting browser worker thread")
     _browser_thread = threading.Thread(target=_worker_thread, daemon=True)
     _browser_thread.start()
     _thread_started = True
 
-    add_debug_log("initialize_browser: ブラウザワーカースレッド開始完了")
-    return {"status": "success", "message": "ブラウザワーカーを初期化しました"}
+    add_debug_log("initialize_browser: Browser worker thread started successfully")
+    return {"status": "success", "message": "Browser worker initialized"}
 
 
 def get_aria_snapshot() -> Dict[str, Any]:
-    """ブラウザワーカースレッドから ARIA Snapshot 情報を取得します"""
+    """Gets ARIA Snapshot information from the browser worker thread"""
 
-    add_debug_log("browser.get_aria_snapshot: ARIAスナップショット取得要求送信")
+    add_debug_log("browser.get_aria_snapshot: Sending ARIA snapshot request")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "get_aria_snapshot"})
 
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.get_aria_snapshot: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.get_aria_snapshot: Response received status={res.get('status')}")
 
         if res.get("status") == "success":
             raw_snapshot = res.get("aria_snapshot", [])
@@ -91,68 +90,68 @@ def get_aria_snapshot() -> Dict[str, Any]:
             return {
                 "status": "success",
                 "aria_snapshot": filtered_snapshot,
-                "message": res.get("message", "ARIA Snapshot取得成功"),
+                "message": res.get("message", "ARIA Snapshot retrieved successfully"),
             }
-        error_msg = res.get("message", "不明なエラー")
-        add_debug_log(f"browser.get_aria_snapshot: エラー {error_msg}")
+        error_msg = res.get("message", "Unknown error")
+        add_debug_log(f"browser.get_aria_snapshot: Error {error_msg}")
         return {
             "status": "error",
             "aria_snapshot": [],
-            "message": f"ARIA Snapshot取得エラー: {error_msg}",
+            "message": f"ARIA Snapshot retrieval error: {error_msg}",
         }
     except queue.Empty:
-        add_debug_log("browser.get_aria_snapshot: タイムアウト", level="ERROR")
+        add_debug_log("browser.get_aria_snapshot: Timeout", level="ERROR")
         return {
             "status": "error",
             "aria_snapshot": [],
-            "message": "ARIA Snapshot取得タイムアウト",
+            "message": "ARIA Snapshot retrieval timeout",
         }
 
 
 def goto_url(url: str) -> Dict[str, Any]:
-    """指定した URL に移動します"""
+    """Navigates to the specified URL"""
 
-    add_debug_log(f"browser.goto_url: URL移動: {url}", level="DEBUG")
+    add_debug_log(f"browser.goto_url: Navigate to URL: {url}", level="DEBUG")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "goto", "params": {"url": url}})
 
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.goto_url: 応答受信: {res}", level="DEBUG")
+        add_debug_log(f"browser.goto_url: Response received: {res}", level="DEBUG")
         return res
     except queue.Empty:
-        add_debug_log("browser.goto_url: タイムアウト", level="ERROR")
-        return {"status": "error", "message": "タイムアウト (応答なし)"}
+        add_debug_log("browser.goto_url: Timeout", level="ERROR")
+        return {"status": "error", "message": "Timeout (no response)"}
 
 
 def click_element(ref_id: int) -> Dict[str, Any]:
-    """指定した要素 (ref_id) をクリックします"""
+    """Clicks the specified element (ref_id)"""
 
     if ref_id is None:
-        add_debug_log("browser.click_element: ref_idが指定されていません")
-        return {"status": "error", "message": "要素を特定するref_idが必要です"}
+        add_debug_log("browser.click_element: ref_id is not specified")
+        return {"status": "error", "message": "ref_id is required to identify the element"}
 
-    add_debug_log(f"browser.click_element: ref_id={ref_id}の要素をクリック")
+    add_debug_log(f"browser.click_element: Clicking element with ref_id={ref_id}")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "click_element", "params": {"ref_id": ref_id}})
 
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.click_element: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.click_element: Response received status={res.get('status')}")
         _append_snapshot_to_response(res)
 
-        # エラー発生時はINFOレベルでログ出力
+        # Log errors at INFO level
         if res.get("status") != "success":
             log_operation_error(
-                "click_element", res.get("message", "不明なエラー"), {"ref_id": ref_id}
+                "click_element", res.get("message", "Unknown error"), {"ref_id": ref_id}
             )
 
         return res
     except queue.Empty:
-        error_msg = "クリックタイムアウト"
+        error_msg = "Click timeout"
         add_debug_log(f"browser.click_element: {error_msg}", level="ERROR")
 
-        # タイムアウトエラーをINFOレベルでログ出力
+        # Log timeout error at INFO level
         log_operation_error("click_element", error_msg, {"ref_id": ref_id})
 
         error_res: Dict[str, Any] = {
@@ -165,16 +164,16 @@ def click_element(ref_id: int) -> Dict[str, Any]:
 
 
 def input_text(text: str, ref_id: int) -> Dict[str, Any]:
-    """指定した要素 (ref_id) にテキストを入力します"""
+    """Inputs text to the specified element (ref_id)"""
 
     if ref_id is None:
-        add_debug_log("browser.input_text: ref_idが指定されていません")
-        return {"status": "error", "message": "要素を特定するref_idが必要です"}
+        add_debug_log("browser.input_text: ref_id is not specified")
+        return {"status": "error", "message": "ref_id is required to identify the element"}
     if text is None:
-        add_debug_log("browser.input_text: テキストが指定されていません")
-        return {"status": "error", "message": "入力するテキストが必要です"}
+        add_debug_log("browser.input_text: Text is not specified")
+        return {"status": "error", "message": "Text to input is required"}
 
-    add_debug_log(f"browser.input_text: ref_id={ref_id}にテキスト '{text}' を入力")
+    add_debug_log(f"browser.input_text: Inputting text '{text}' to ref_id={ref_id}")
     _ensure_worker_initialized()
     _cmd_queue.put(
         {"command": "input_text", "params": {"text": text, "ref_id": ref_id}}
@@ -182,23 +181,23 @@ def input_text(text: str, ref_id: int) -> Dict[str, Any]:
 
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.input_text: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.input_text: Response received status={res.get('status')}")
         _append_snapshot_to_response(res)
 
-        # エラー発生時はINFOレベルでログ出力
+        # Log errors at INFO level
         if res.get("status") != "success":
             log_operation_error(
                 "input_text",
-                res.get("message", "不明なエラー"),
+                res.get("message", "Unknown error"),
                 {"ref_id": ref_id, "text": text},
             )
 
         return res
     except queue.Empty:
-        error_msg = "テキスト入力タイムアウト"
+        error_msg = "Text input timeout"
         add_debug_log(f"browser.input_text: {error_msg}", level="ERROR")
 
-        # タイムアウトエラーをINFOレベルでログ出力
+        # Log timeout error at INFO level
         log_operation_error("input_text", error_msg, {"ref_id": ref_id, "text": text})
 
         error_res: Dict[str, Any] = {
@@ -212,97 +211,97 @@ def input_text(text: str, ref_id: int) -> Dict[str, Any]:
 
 
 def get_current_url() -> str:
-    """現在表示中のページの URL を取得します"""
+    """Gets the URL of the currently displayed page"""
 
-    add_debug_log("browser.get_current_url: 現在のURL取得")
+    add_debug_log("browser.get_current_url: Getting current URL")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "get_current_url"})
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.get_current_url: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.get_current_url: Response received status={res.get('status')}")
         return res.get("url", "") if res.get("status") == "success" else ""
     except queue.Empty:
-        add_debug_log("browser.get_current_url: タイムアウト")
+        add_debug_log("browser.get_current_url: Timeout")
         return ""
 
 
 def save_cookies() -> Dict[str, Any]:
-    """現在のブラウザセッションの Cookie を保存します"""
+    """Saves cookies from the current browser session"""
 
-    add_debug_log("browser.save_cookies: Cookie保存")
+    add_debug_log("browser.save_cookies: Saving cookies")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "save_cookies"})
     try:
         res = _res_queue.get()
-        add_debug_log(f"browser.save_cookies: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.save_cookies: Response received status={res.get('status')}")
         return res
     except queue.Empty:
-        add_debug_log("browser.save_cookies: タイムアウト")
-        return {"status": "error", "message": "タイムアウト"}
+        add_debug_log("browser.save_cookies: Timeout")
+        return {"status": "error", "message": "Timeout"}
 
 
 def cleanup_browser() -> Dict[str, Any]:
-    """ブラウザを終了します"""
+    """Closes the browser"""
 
-    add_debug_log("browser.cleanup_browser: ブラウザ終了")
+    add_debug_log("browser.cleanup_browser: Closing browser")
     _ensure_worker_initialized()
     _cmd_queue.put({"command": "quit"})
     try:
         res = _res_queue.get(timeout=5)
-        add_debug_log(f"browser.cleanup_browser: 応答受信 status={res.get('status')}")
+        add_debug_log(f"browser.cleanup_browser: Response received status={res.get('status')}")
         return res
     except queue.Empty:
-        add_debug_log("browser.cleanup_browser: タイムアウト - 強制終了します")
-        return {"status": "success", "message": "タイムアウトによる強制終了"}
+        add_debug_log("browser.cleanup_browser: Timeout - forcing termination")
+        return {"status": "success", "message": "Forced termination due to timeout"}
 
 
 # ---------------------------------------------------------------------------
-# 内部ユーティリティ
+# Internal utilities
 # ---------------------------------------------------------------------------
 
 
 def _append_snapshot_to_response(res: Dict[str, Any]) -> None:
-    """レスポンス辞書に ARIA Snapshot を追加します (失敗しても握りつぶす)"""
+    """Adds ARIA Snapshot to the response dictionary (swallows failures)"""
 
     try:
         aria_snapshot_result = get_aria_snapshot()
         res["aria_snapshot"] = aria_snapshot_result.get("aria_snapshot", [])
         if aria_snapshot_result.get("status") != "success":
             res["aria_snapshot_message"] = aria_snapshot_result.get(
-                "message", "ARIA Snapshot取得失敗"
+                "message", "ARIA Snapshot retrieval failed"
             )
     except Exception as e:  # pragma: no cover
         add_debug_log(
-            f"_append_snapshot_to_response: スナップショット追加失敗: {e}",
+            f"_append_snapshot_to_response: Failed to add snapshot: {e}",
             level="WARNING",
         )
 
 
 def _ensure_worker_initialized() -> Dict[str, str]:
-    """ワーカースレッドが初期化されていることを確認"""
+    """Ensures the worker thread is initialized"""
 
     if not _thread_started:
         return initialize_browser()
-    return {"status": "success", "message": "ブラウザワーカーは既に初期化されています"}
+    return {"status": "success", "message": "Browser worker is already initialized"}
 
 
 # ---------------------------------------------------------------------------
-# スレッド・ワーカー関連
+# Thread and worker related
 # ---------------------------------------------------------------------------
 
 
 def _worker_thread() -> None:
-    """ブラウザワーカーのメインスレッド処理 (同期ラッパ)"""
+    """Main thread process for browser worker (synchronous wrapper)"""
 
-    add_debug_log("ワーカースレッド: スレッド開始")
+    add_debug_log("Worker thread: Thread started")
     asyncio.run(_async_worker())
-    add_debug_log("ワーカースレッド: スレッド終了")
+    add_debug_log("Worker thread: Thread ended")
 
 
 async def _async_worker() -> None:  # noqa: C901
-    """非同期ワーカースレッドとして Playwright を直接操作"""
+    """Operates Playwright directly as an asynchronous worker thread"""
 
-    add_debug_log("ワーカースレッド: 非同期ブラウザワーカー開始")
+    add_debug_log("Worker thread: Asynchronous browser worker started")
 
     screen_width, screen_height = get_screen_size()
 
@@ -310,10 +309,10 @@ async def _async_worker() -> None:  # noqa: C901
         from playwright.async_api import async_playwright  # type: ignore
     except ImportError:
         add_debug_log(
-            "ワーカースレッド: Playwrightがインポートできませんでした", level="ERROR"
+            "Worker thread: Failed to import Playwright", level="ERROR"
         )
         _res_queue.put(
-            {"status": "error", "message": "Playwrightがインポートできませんでした"}
+            {"status": "error", "message": "Failed to import Playwright"}
         )
         return
 
@@ -333,29 +332,29 @@ async def _async_worker() -> None:  # noqa: C901
     )
 
     context = await browser.new_context(
-        locale="ja-JP",
+        locale="en-US",
         ignore_https_errors=True,
         viewport={"width": screen_width, "height": screen_height},
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     )
 
-    # Cookie の読み込み
+    # Load cookies
     if os.path.exists(constants.COOKIE_FILE):
         try:
             with open(constants.COOKIE_FILE, "r", encoding="utf-8") as f:
                 cookies = json.load(f)
             await context.add_cookies(cookies)
             add_debug_log(
-                f"ワーカースレッド: クッキーを読み込みました: {len(cookies)} 件"
+                f"Worker thread: Cookies loaded: {len(cookies)} items"
             )
         except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
-            add_debug_log(f"ワーカースレッド: クッキーの読み込みに失敗: {e}")
+            add_debug_log(f"Worker thread: Failed to load cookies: {e}")
 
     page = await context.new_page()
 
-    # 初期ページ表示
+    # Initial page display
     try:
-        add_debug_log("ワーカースレッド: 初期ページを読み込みます")
+        add_debug_log("Worker thread: Loading initial page")
         await page.goto(
             constants.DEFAULT_INITIAL_URL,
             wait_until="networkidle",
@@ -363,35 +362,35 @@ async def _async_worker() -> None:  # noqa: C901
         )
         await page.evaluate("() => { window.focus(); document.body.click(); }")
         add_debug_log(
-            f"ワーカースレッド: 初期ページ({constants.DEFAULT_INITIAL_URL})の読み込みが完了しました"
+            f"Worker thread: Initial page ({constants.DEFAULT_INITIAL_URL}) loaded successfully"
         )
     except PlaywrightTimeoutError as e:
         add_debug_log(
-            f"ワーカースレッド: 初期ページの読み込みでエラーが発生しました: {e}"
+            f"Worker thread: Error occurred while loading initial page: {e}"
         )
     except Exception as e:  # pragma: no cover
         add_debug_log(
-            f"ワーカースレッド: 初期ページの読み込みで予期せぬエラーが発生しました: {e}"
+            f"Worker thread: Unexpected error occurred while loading initial page: {e}"
         )
 
-    # コマンドループ
+    # Command loop
     while True:
         try:
             cmd = _cmd_queue.get(block=False)
             command = cmd.get("command")
             params = cmd.get("params", {})
 
-            # 終了処理 ---------------------------------------------------------
+            # Termination process ---------------------------------------------
             if command == "quit":
-                add_debug_log("ワーカースレッド: 終了コマンドを受け取りました")
+                add_debug_log("Worker thread: Received quit command")
                 _res_queue.put(
-                    {"status": "success", "message": "ブラウザを終了しました"}
+                    {"status": "success", "message": "Browser closed"}
                 )
                 break
 
             # ARIA Snapshot ----------------------------------------------------
             elif command == "get_aria_snapshot":
-                add_debug_log("ワーカースレッド: ARIA Snapshot取得")
+                add_debug_log("Worker thread: Get ARIA Snapshot")
                 try:
                     await page.wait_for_load_state(
                         "domcontentloaded", timeout=constants.DEFAULT_TIMEOUT_MS
@@ -403,35 +402,35 @@ async def _async_worker() -> None:  # noqa: C901
 
                     if process_error:
                         add_debug_log(
-                            f"ワーカースレッド: JavaScript実行中にエラー発生: {process_error}"
+                            f"Worker thread: Error during JavaScript execution: {process_error}"
                         )
                     if error_count > 0:
                         add_debug_log(
-                            f"ワーカースレッド: スナップショット取得中に {error_count} 件の要素処理エラーが発生しました。"
+                            f"Worker thread: {error_count} element processing errors occurred during snapshot retrieval."
                         )
 
                     _res_queue.put(
                         {
                             "status": "success",
-                            "message": f"ARIA Snapshot取得成功 ({len(snapshot_data)} 要素取得、{error_count} エラー)",
+                            "message": f"ARIA Snapshot retrieved successfully ({len(snapshot_data)} elements, {error_count} errors)",
                             "aria_snapshot": snapshot_data,
                         }
                     )
                 except PlaywrightTimeoutError as e:
-                    current_url = page.url if hasattr(page, "url") else "不明"
-                    error_msg = f"ARIA Snapshot取得エラー: {e}"
-                    add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                    current_url = page.url if hasattr(page, "url") else "unknown"
+                    error_msg = f"ARIA Snapshot retrieval error: {e}"
+                    add_debug_log(f"Worker thread: {error_msg} (URL: {current_url})")
                     _res_queue.put({"status": "error", "message": error_msg})
 
-            # 要素クリック ------------------------------------------------------
+            # Element click ----------------------------------------------------
             elif command == "click_element":
                 ref_id = params.get("ref_id")
-                add_debug_log(f"ワーカースレッド: 要素クリック (ref_id): {ref_id}")
+                add_debug_log(f"Worker thread: Element click (ref_id): {ref_id}")
                 if ref_id is None:
                     _res_queue.put(
                         {
                             "status": "error",
-                            "message": "要素を特定するためのref_idが不足しています",
+                            "message": "ref_id is required to identify the element",
                         }
                     )
                     continue
@@ -440,16 +439,16 @@ async def _async_worker() -> None:  # noqa: C901
                     selector = f"[data-ref-id='ref-{ref_id}']"
                     locator = page.locator(selector)
 
-                    # 要素をビューポート内に収めるユーティリティを呼び出し
+                    # Call utility to ensure element is within viewport
                     await ensure_element_visible(page, locator)
 
                     try:
                         await locator.click(timeout=constants.DEFAULT_TIMEOUT_MS)
                     except PlaywrightTimeoutError as te_click:
                         error_msg = (
-                            f"クリックタイムアウト (ref_id={ref_id}): {te_click}"
+                            f"Click timeout (ref_id={ref_id}): {te_click}"
                         )
-                        add_debug_log("クリック操作タイムアウト", level="ERROR")
+                        add_debug_log("Click operation timeout", level="ERROR")
                         log_operation_error(
                             "click_element", error_msg, {"ref_id": ref_id}
                         )
@@ -463,20 +462,20 @@ async def _async_worker() -> None:  # noqa: C901
                         )
                         continue
                     except Exception:
-                        # 通常クリックに失敗した場合は ``force=True`` で最終試行
+                        # Try one last time with ``force=True`` if normal click fails
                         await locator.click(
                             force=True, timeout=constants.DEFAULT_TIMEOUT_MS
                         )
                     _res_queue.put(
                         {
                             "status": "success",
-                            "message": f"ref_id={ref_id} の要素をクリックしました",
+                            "message": f"Clicked element with ref_id={ref_id}",
                         }
                     )
                 except Exception as e:
-                    current_url = page.url if hasattr(page, "url") else "不明"
-                    error_msg = f"要素クリック時の予期せぬエラー (ref_id={ref_id}): {e}"
-                    add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                    current_url = page.url if hasattr(page, "url") else "unknown"
+                    error_msg = f"Unexpected error during element click (ref_id={ref_id}): {e}"
+                    add_debug_log(f"Worker thread: {error_msg} (URL: {current_url})")
                     log_operation_error(
                         "click_element",
                         error_msg,
@@ -487,18 +486,18 @@ async def _async_worker() -> None:  # noqa: C901
                         {"status": "error", "message": error_msg, "traceback": tb}
                     )
 
-            # テキスト入力 ------------------------------------------------------
+            # Text input ------------------------------------------------------
             elif command == "input_text":
                 text = params.get("text")
                 ref_id = params.get("ref_id")
                 add_debug_log(
-                    f"ワーカースレッド: テキスト入力 (ref_id={ref_id}, text='{text}')"
+                    f"Worker thread: Text input (ref_id={ref_id}, text='{text}')"
                 )
                 if ref_id is None:
                     _res_queue.put(
                         {
                             "status": "error",
-                            "message": "要素を特定するためのref_idが不足しています",
+                            "message": "ref_id is required to identify the element",
                         }
                     )
                     continue
@@ -506,7 +505,7 @@ async def _async_worker() -> None:  # noqa: C901
                     _res_queue.put(
                         {
                             "status": "error",
-                            "message": "入力するテキストが指定されていません",
+                            "message": "Text to input is not specified",
                         }
                     )
                     continue
@@ -515,7 +514,7 @@ async def _async_worker() -> None:  # noqa: C901
                     selector = f"[data-ref-id='ref-{ref_id}']"
                     locator = page.locator(selector)
 
-                    # 要素をビューポート内に収める
+                    # Ensure element is within viewport
                     await ensure_element_visible(page, locator)
 
                     try:
@@ -526,9 +525,9 @@ async def _async_worker() -> None:  # noqa: C901
                         )
                     except PlaywrightTimeoutError as te_input:
                         error_msg = (
-                            f"テキスト入力タイムアウト (ref_id={ref_id}): {te_input}"
+                            f"Text input timeout (ref_id={ref_id}): {te_input}"
                         )
-                        add_debug_log("テキスト入力タイムアウト", level="ERROR")
+                        add_debug_log("Text input timeout", level="ERROR")
                         log_operation_error(
                             "input_text", error_msg, {"ref_id": ref_id, "text": text}
                         )
@@ -544,13 +543,13 @@ async def _async_worker() -> None:  # noqa: C901
                     _res_queue.put(
                         {
                             "status": "success",
-                            "message": f"ref_id={ref_id} の要素にテキスト '{text}' を入力しました",
+                            "message": f"Input text '{text}' to element with ref_id={ref_id}",
                         }
                     )
                 except Exception as e:
-                    current_url = page.url if hasattr(page, "url") else "不明"
-                    error_msg = f"テキスト入力時の予期せぬエラー (ref_id={ref_id}, text='{text}'): {e}"
-                    add_debug_log(f"ワーカースレッド: {error_msg} (URL: {current_url})")
+                    current_url = page.url if hasattr(page, "url") else "unknown"
+                    error_msg = f"Unexpected error during text input (ref_id={ref_id}, text='{text}'): {e}"
+                    add_debug_log(f"Worker thread: {error_msg} (URL: {current_url})")
                     log_operation_error(
                         "input_text",
                         error_msg,
@@ -558,26 +557,26 @@ async def _async_worker() -> None:  # noqa: C901
                     )
                     _res_queue.put({"status": "error", "message": error_msg})
 
-            # Cookie 保存 -------------------------------------------------------
+            # Save cookies -------------------------------------------------------
             elif command == "save_cookies":
-                add_debug_log("ワーカースレッド: Cookie 保存要求を受信")
+                add_debug_log("Worker thread: Received cookie save request")
                 try:
                     cookies = await context.cookies()
                     with open(constants.COOKIE_FILE, "w", encoding="utf-8") as f:
                         json.dump(cookies, f, ensure_ascii=False, indent=2)
                     _res_queue.put(
-                        {"status": "success", "message": "Cookie を保存しました"}
+                        {"status": "success", "message": "Cookies saved successfully"}
                     )
                 except Exception as e:
                     _res_queue.put(
-                        {"status": "error", "message": f"Cookie 保存失敗: {e}"}
+                        {"status": "error", "message": f"Failed to save cookies: {e}"}
                     )
 
-            # 現在 URL ----------------------------------------------------------
+            # Current URL ----------------------------------------------------------
             elif command == "get_current_url":
                 _res_queue.put({"status": "success", "url": page.url})
 
-            # URL 遷移 ---------------------------------------------------------
+            # URL navigation ---------------------------------------------------------
             elif command == "goto":
                 target_url = params.get("url")
                 try:
@@ -587,31 +586,31 @@ async def _async_worker() -> None:  # noqa: C901
                         timeout=constants.DEFAULT_TIMEOUT_MS,
                     )
                     _res_queue.put(
-                        {"status": "success", "message": f"{target_url} に移動しました"}
+                        {"status": "success", "message": f"Navigated to {target_url}"}
                     )
                 except Exception as e:
-                    _res_queue.put({"status": "error", "message": f"URL 移動失敗: {e}"})
+                    _res_queue.put({"status": "error", "message": f"URL navigation failed: {e}"})
 
-            # 未知コマンド ------------------------------------------------------
+            # Unknown command ------------------------------------------------------
             else:
-                add_debug_log(f"ワーカースレッド: 未知のコマンド: {command}")
+                add_debug_log(f"Worker thread: Unknown command: {command}")
                 _res_queue.put(
-                    {"status": "error", "message": f"未知のコマンド: {command}"}
+                    {"status": "error", "message": f"Unknown command: {command}"}
                 )
 
         except queue.Empty:
             await asyncio.sleep(0.1)
         except Exception as e:
-            add_debug_log(f"ワーカースレッド: 予期せぬエラー: {e}")
+            add_debug_log(f"Worker thread: Unexpected error: {e}")
             try:
-                _res_queue.put({"status": "error", "message": f"予期せぬエラー: {e}"})
+                _res_queue.put({"status": "error", "message": f"Unexpected error: {e}"})
             except queue.Full:
                 pass
 
-    # finally ブロック ---------------------------------------------------------
-    add_debug_log("ワーカースレッド: 終了処理")
+    # finally block ---------------------------------------------------------
+    add_debug_log("Worker thread: Cleanup process")
     try:
         if "browser" in locals():
             await browser.close()  # type: ignore[attr-defined]
     except Exception as e:  # pragma: no cover
-        add_debug_log(f"ワーカースレッド: 終了処理エラー: {e}")
+        add_debug_log(f"Worker thread: Cleanup process error: {e}")
