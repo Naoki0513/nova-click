@@ -1,4 +1,4 @@
-# Browser Automation Agent
+# nova-click
 
 A browser automation agent that combines **Amazon Nova** model from Amazon Bedrock with Playwright to enable browser automation using natural language commands.
 
@@ -6,9 +6,9 @@ A browser automation agent that combines **Amazon Nova** model from Amazon Bedro
 
 ---
 
-## Capabilities
+## Why Nova?
 
-- Automate browser operations using only natural language instructions
+Amazon Nova is ideal for browser automation with its fast processing speed and large context window. It efficiently understands extensive webpage data and smoothly executes natural language commands for browser operations.
 
 ---
 
@@ -83,3 +83,14 @@ python main.py
 ```
 
 By default, the prompt "Search for the most popular waterproof Bluetooth speaker under $50 on Amazon and add it to the cart" will be executed. If you want to change the settings, edit the constants at the beginning of `main.py`.
+
+### 4. Supported Models
+
+This agent supports multiple models from Amazon Bedrock and Anthropic:
+
+- **Amazon Nova Pro** (default): `us.amazon.nova-pro-v1:0`
+- **Amazon Nova Premier**: `us.amazon.nova-premier-v1:0`
+- **Amazon Nova Lite**: `us.amazon.nova-lite-v1:0`
+- **Claude 3.7 Sonnet**: `anthropic.claude-3-7-sonnet-20250219`
+
+You can change the model by modifying the `DEFAULT_MODEL_ID` constant in `main.py`.
