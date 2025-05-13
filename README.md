@@ -4,13 +4,9 @@ A browser automation agent that combines **Amazon Nova** model from Amazon Bedro
 
 ![Demo](assets/demo.gif)
 
----
-
 ## Why Nova?
 
 Amazon Nova is ideal for browser automation with its fast processing speed and large context window. It efficiently understands extensive webpage data and smoothly executes natural language commands for browser operations.
-
----
 
 ## Quick Start
 
