@@ -84,9 +84,9 @@ By default, the prompt "Search for the most popular waterproof Bluetooth speaker
 
 This agent supports models compatible with Amazon Bedrock's converse API:
 
-- **Amazon Nova Pro** (recommended): `us.amazon.nova-pro-v1:0`
-- **Amazon Nova Premier** (recommended): `us.amazon.nova-premier-v1:0`
-- **Amazon Nova Lite** (recommended): `us.amazon.nova-lite-v1:0`
-- **Claude 3.7 Sonnet** (recommended): `anthropic.claude-3-7-sonnet-20250219-v1:0`
+- **Amazon Nova Pro** (Default): `us.amazon.nova-pro-v1:0`
+- **Amazon Nova Premier** : `us.amazon.nova-premier-v1:0`
+- **Amazon Nova Lite** : `us.amazon.nova-lite-v1:0`
+- **Claude 3.7 Sonnet** : `anthropic.claude-3-7-sonnet-20250219-v1:0`
 
 You can change the model by modifying the `DEFAULT_MODEL_ID` constant in `main.py`.
