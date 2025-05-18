@@ -35,7 +35,7 @@ ALLOWED_ROLES = [
 ]
 
 # Initial browser page URL
-DEFAULT_INITIAL_URL = "https://www.google.com/?hl=en&gl=US"
+DEFAULT_INITIAL_URL = "https://www.google.com"
 
 # Default timeout for Playwright operations (milliseconds)
 DEFAULT_TIMEOUT_MS = 3000
