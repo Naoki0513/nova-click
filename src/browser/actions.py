@@ -240,6 +240,31 @@ def save_cookies() -> Dict[str, Any]:
         return {"status": "error", "message": "Timeout"}
 
 
+def take_screenshot(filepath: str = None, full_page: bool = True) -> Dict[str, Any]:
+    """Takes a screenshot of the current page
+    
+    Args:
+        filepath: Path to save the screenshot (optional)
+        full_page: Whether to capture the full page or just viewport
+        
+    Returns:
+        Dict with status, message, and filepath
+    """
+    add_debug_log(f"browser.take_screenshot: Taking screenshot, filepath={filepath}")
+    _ensure_worker_initialized()
+    _cmd_queue.put({
+        "command": "take_screenshot", 
+        "params": {"filepath": filepath, "full_page": full_page}
+    })
+    try:
+        res = _res_queue.get(timeout=30)
+        add_debug_log(f"browser.take_screenshot: Response received status={res.get('status')}")
+        return res
+    except queue.Empty:
+        add_debug_log("browser.take_screenshot: Timeout")
+        return {"status": "error", "message": "Screenshot timeout"}
+
+
 def cleanup_browser() -> Dict[str, Any]:
     """Closes the browser"""
 
@@ -339,9 +364,10 @@ async def _async_worker() -> None:  # noqa: C901
     )
 
     # Load cookies
-    if os.path.exists(constants.COOKIE_FILE):
+    cookie_file = getattr(constants, 'COOKIE_FILE', 'browser_cookies.json')
+    if os.path.exists(cookie_file):
         try:
-            with open(constants.COOKIE_FILE, "r", encoding="utf-8") as f:
+            with open(cookie_file, "r", encoding="utf-8") as f:
                 cookies = json.load(f)
             await context.add_cookies(cookies)
             add_debug_log(
@@ -355,14 +381,16 @@ async def _async_worker() -> None:  # noqa: C901
     # Initial page display
     try:
         add_debug_log("Worker thread: Loading initial page")
+        default_url = getattr(constants, 'DEFAULT_INITIAL_URL', 'https://www.google.com')
+        default_timeout = getattr(constants, 'DEFAULT_TIMEOUT_MS', 3000)
         await page.goto(
-            constants.DEFAULT_INITIAL_URL,
+            default_url,
             wait_until="networkidle",
-            timeout=constants.DEFAULT_TIMEOUT_MS,
+            timeout=default_timeout,
         )
         await page.evaluate("() => { window.focus(); document.body.click(); }")
         add_debug_log(
-            f"Worker thread: Initial page ({constants.DEFAULT_INITIAL_URL}) loaded successfully"
+            f"Worker thread: Initial page ({default_url}) loaded successfully"
         )
     except PlaywrightTimeoutError as e:
         add_debug_log(
@@ -392,8 +420,9 @@ async def _async_worker() -> None:  # noqa: C901
             elif command == "get_aria_snapshot":
                 add_debug_log("Worker thread: Get ARIA Snapshot")
                 try:
+                    timeout_ms = getattr(constants, 'DEFAULT_TIMEOUT_MS', 3000)
                     await page.wait_for_load_state(
-                        "domcontentloaded", timeout=constants.DEFAULT_TIMEOUT_MS
+                        "domcontentloaded", timeout=timeout_ms
                     )
                     snap_result = await snapshot_mod.get_snapshot_with_stats(page)
                     snapshot_data = snap_result.get("snapshot", [])
@@ -443,7 +472,8 @@ async def _async_worker() -> None:  # noqa: C901
                     await ensure_element_visible(page, locator)
 
                     try:
-                        await locator.click(timeout=constants.DEFAULT_TIMEOUT_MS)
+                        timeout_ms = getattr(constants, 'DEFAULT_TIMEOUT_MS', 3000)
+                        await locator.click(timeout=timeout_ms)
                     except PlaywrightTimeoutError as te_click:
                         error_msg = (
                             f"Click timeout (ref_id={ref_id}): {te_click}"
@@ -463,8 +493,9 @@ async def _async_worker() -> None:  # noqa: C901
                         continue
                     except Exception:
                         # Try one last time with ``force=True`` if normal click fails
+                        timeout_ms = getattr(constants, 'DEFAULT_TIMEOUT_MS', 3000)
                         await locator.click(
-                            force=True, timeout=constants.DEFAULT_TIMEOUT_MS
+                            force=True, timeout=timeout_ms
                         )
                     _res_queue.put(
                         {
@@ -590,6 +621,36 @@ async def _async_worker() -> None:  # noqa: C901
                     )
                 except Exception as e:
                     _res_queue.put({"status": "error", "message": f"URL navigation failed: {e}"})
+
+            # Screenshot -------------------------------------------------------------
+            elif command == "take_screenshot":
+                filepath = params.get("filepath")
+                full_page = params.get("full_page", True)
+                try:
+                    import time
+                    if not filepath:
+                        timestamp = int(time.time())
+                        filepath = f"screenshots/screenshot_{timestamp}.png"
+                    
+                    # Create directory if it doesn't exist
+                    directory = os.path.dirname(filepath)
+                    if directory:
+                        os.makedirs(directory, exist_ok=True)
+                    
+                    # Take screenshot
+                    await page.screenshot(path=filepath, full_page=full_page)
+                    
+                    _res_queue.put({
+                        "status": "success",
+                        "message": f"Screenshot saved successfully",
+                        "filepath": os.path.abspath(filepath),
+                        "size": os.path.getsize(filepath) if os.path.exists(filepath) else 0
+                    })
+                except Exception as e:
+                    _res_queue.put({
+                        "status": "error",
+                        "message": f"Screenshot failed: {str(e)}"
+                    })
 
             # Unknown command ------------------------------------------------------
             else:
